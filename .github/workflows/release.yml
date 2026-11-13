@@ -36,6 +36,15 @@ jobs:
           (cd portable && zip -9 -r ../dist/DockX-portable.zip DockX)
           ls -la dist
 
+      - name: Прибрати з релізу файли, яких більше немає
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ github.ref_type == 'tag' && github.ref_name || 'v2.2.0' }}"
+          for a in $(gh release view "$TAG" --json assets --jq '.assets[].name' 2>/dev/null); do
+            [ -f "dist/$a" ] || gh release delete-asset "$TAG" "$a" -y
+          done
+
       - name: Реліз
         uses: softprops/action-gh-release@v2
         with:
