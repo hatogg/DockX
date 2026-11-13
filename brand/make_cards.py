@@ -69,7 +69,8 @@ def profile_card():
     clip = Image.new('RGBA', (W, H), (0, 0, 0, 0))
     clip.paste(layer, (0, 0), mask)
     card.alpha_composite(clip)
-    d = ImageDraw.Draw(card)
+    ov = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(ov)
     d.text((62, 210), 'DockX', font=F('Black', 112), fill=(255, 255, 255))
     sub = F('Medium', 36)
     d.text((64, 350), 'Док як у macOS', font=sub, fill=(255, 255, 255, 215))
@@ -79,6 +80,7 @@ def profile_card():
     x = 64
     x += chip(d, x, 540, 'Dynamic Island', f) + 18
     chip(d, x, 540, 'Rust · 1,5 МБ', f)
+    card.alpha_composite(ov)
     card.save(os.path.join(DOCS, 'card.png'))
 
 def banner():
@@ -88,11 +90,13 @@ def banner():
     shadowed(b, sc, W - 800 - 50, (H - sc.height) // 2)
     icon = Image.open(os.path.join(HERE, 'icon-1024.png')).resize((120, 120), Image.LANCZOS)
     b.alpha_composite(icon, (60, 70))
-    d = ImageDraw.Draw(b)
+    ov = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(ov)
     d.text((60, 210), 'DockX', font=F('Black', 96), fill=(255, 255, 255))
     d.text((62, 330), 'Док + Dynamic Island', font=F('Medium', 30), fill=(255, 255, 255, 220))
     d.text((62, 370), 'для Windows 10 / 11', font=F('Medium', 30), fill=(255, 255, 255, 220))
     d.text((62, 560), 'by X44TO', font=F('Bold', 26), fill=RED)
+    b.alpha_composite(ov)
     b.convert('RGB').save(os.path.join(DOCS, 'banner.png'), optimize=True)
 
 if __name__ == '__main__':
