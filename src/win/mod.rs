@@ -245,6 +245,8 @@ struct App {
     ctl_was_open: bool,
     ctl_local_at: f64,
     fs_since: f64,
+    taskbar_hidden: bool,
+    last_taskbar: f64,
 }
 
 thread_local! {
@@ -350,10 +352,50 @@ impl App {
         if autostart_get("DockX") != self.cfg.autostart {
             autostart_set("DockX", self.cfg.autostart);
         }
-        if taskbar_autohide_get() != self.cfg.taskbar_autohide {
-            taskbar_autohide_set(self.cfg.taskbar_autohide);
-        }
+        self.apply_taskbar();
         self.save_cfg_at = self.now() + 0.4;
+    }
+
+    /// «Сховати панель задач»: auto-hide (so the work area spans the whole screen and the dock sits
+    /// at the very bottom) plus the taskbar windows hidden; the user's own auto-hide choice comes back after.
+    fn apply_taskbar(&mut self) {
+        if self.cfg.hide_taskbar && !self.taskbar_hidden {
+            taskbar_autohide_set(true);
+            taskbars_show(false);
+            self.taskbar_hidden = true;
+        } else if !self.cfg.hide_taskbar && self.taskbar_hidden {
+            self.restore_taskbar();
+        }
+    }
+
+    fn restore_taskbar(&mut self) {
+        if self.taskbar_hidden {
+            taskbars_show(true);
+            taskbar_autohide_set(self.cfg.taskbar_prev_autohide);
+            self.taskbar_hidden = false;
+        }
+    }
+
+    /// Windows shows the taskbar again now and then (Start, Explorer restart): hide it again,
+    /// except while Start, search or the tray overflow is open.
+    fn keep_taskbar_hidden(&mut self, now: f64) {
+        if !self.taskbar_hidden || now - self.last_taskbar < 1.0 {
+            return;
+        }
+        self.last_taskbar = now;
+        unsafe {
+            let fg = GetForegroundWindow();
+            let mut cls = [0u16; 64];
+            let n = GetClassNameW(fg, &mut cls);
+            let cls = String::from_utf16_lossy(&cls[..n as usize]);
+            if matches!(cls.as_str(), "Windows.UI.Core.CoreWindow" | "Shell_TrayWnd" | "Shell_SecondaryTrayWnd" | "NotifyIconOverflowWindow" | "TopLevelWindowForOverflowXamlIsland") {
+                return;
+            }
+        }
+        if taskbars_visible() {
+            taskbar_autohide_set(true);
+            taskbars_show(false);
+        }
     }
 
     fn save_now(&mut self) {
@@ -570,6 +612,7 @@ impl App {
             self.last_battery = now;
             self.island.set_battery(sysmon::battery());
         }
+        self.keep_taskbar_hidden(now);
         if now - self.last_fs > 0.5 {
             self.last_fs = now;
             // hide only when a fullscreen window stays in front (~1 s): task view, overlays or a
@@ -854,7 +897,11 @@ impl App {
         for a in acts {
             match a {
                 SettingsAction::Changed | SettingsAction::ResetAll => {
-                    if let Some(sw) = &self.settings {
+                    if let Some(sw) = &mut self.settings {
+                        // switched on just now: remember the user's own auto-hide choice to put it back later
+                        if sw.panel.app.hide_taskbar && !self.cfg.hide_taskbar {
+                            sw.panel.app.taskbar_prev_autohide = taskbar_autohide_get();
+                        }
                         self.cfg = sw.panel.app.clone();
                     }
                     self.apply_cfg();
@@ -885,7 +932,6 @@ impl App {
         }
         let mut cfg = self.cfg.clone();
         cfg.autostart = autostart_get("DockX");
-        cfg.taskbar_autohide = taskbar_autohide_get();
         cfg.island = self.island.cfg.clone();
         let mut panel = SettingsPanel::new(cfg, self.fonts.clone(), self.s);
         panel.version = env!("CARGO_PKG_VERSION").into();
@@ -1205,6 +1251,7 @@ fn pids_for<'a>(running: &'a HashMap<String, Vec<u32>>, it: &DockItem) -> Option
 
 fn quit_app() {
     with(|a| {
+        a.restore_taskbar();
         a.gamma.disable();
         if a.ctl_awake {
             controls::keep_awake(false);
@@ -1698,7 +1745,6 @@ pub fn run() {
         None => (AppSettings::default(), default_items()),
     };
     cfg.autostart = autostart_get("DockX");
-    cfg.taskbar_autohide = taskbar_autohide_get();
     let items: Vec<DockItem> = item_defs.iter().map(|(p, n)| make_item(p, n, &fonts)).collect();
     let dock = Dock::new(cfg.dock.clone(), items, fonts.clone());
     let mut island = Island::new(cfg.island.clone(), fonts.clone());
@@ -1821,8 +1867,11 @@ pub fn run() {
             ctl_was_open: false,
             ctl_local_at: -10.0,
             fs_since: -1.0,
+            taskbar_hidden: false,
+            last_taskbar: 0.0,
         };
         APP.with(|a| *a.borrow_mut() = Some(app));
+        with(|a| a.apply_taskbar());
 
         let hz = {
             let dc = GetDC(None);

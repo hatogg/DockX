@@ -16,13 +16,15 @@ pub struct AppSettings {
     pub island: IslandSettings,
     pub autostart: bool,
     pub show_dock: bool,
-    /// Windows' own taskbar auto-hide (read from and written to the system, not dock.ini)
-    pub taskbar_autohide: bool,
+    /// hide the Windows taskbar completely while DockX runs (only the dock stays)
+    pub hide_taskbar: bool,
+    /// the taskbar's own auto-hide state before DockX hid it, to put back
+    pub taskbar_prev_autohide: bool,
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
-        AppSettings { dock: DockSettings::default(), island: IslandSettings::default(), autostart: false, show_dock: true, taskbar_autohide: false }
+        AppSettings { dock: DockSettings::default(), island: IslandSettings::default(), autostart: false, show_dock: true, hide_taskbar: false, taskbar_prev_autohide: false }
     }
 }
 
@@ -40,6 +42,7 @@ pub fn to_ini(a: &AppSettings, items: &[DockItem]) -> String {
     let i = &a.island;
     let mut s = String::from("# DockX 2.0\n");
     s += &format!("IconSize={}\nMagnification={:.2}\nAutoHide={}\nHideInFullscreen={}\nShowDock={}\n", d.icon_size, d.magnification, b(d.auto_hide), b(d.hide_in_fullscreen), b(a.show_dock));
+    s += &format!("HideTaskbar={}\nTaskbarPrevAutoHide={}\n", b(a.hide_taskbar), b(a.taskbar_prev_autohide));
     let kv: Vec<(&str, String)> = vec![
         ("Island", b(i.enabled).into()),
         ("IslandSize", i.size.to_string()),
@@ -107,6 +110,8 @@ pub fn from_ini(text: &str) -> (AppSettings, Vec<(String, String)>) {
             "AutoHide" => a.dock.auto_hide = on,
             "HideInFullscreen" => a.dock.hide_in_fullscreen = on,
             "ShowDock" => a.show_dock = on,
+            "HideTaskbar" => a.hide_taskbar = on,
+            "TaskbarPrevAutoHide" => a.taskbar_prev_autohide = on,
             "Island" => i.enabled = on,
             "IslandSize" => i.size = u8v(1).min(2),
             "IslandFloating" => i.floating = on,
@@ -274,7 +279,7 @@ impl SettingsPanel {
                     r("icon_size", "Розмір іконок", "", ch(&["40", "48", "56", "64", "72", "84"], si)),
                     r("magnify", "Збільшення при наведенні", "", ch(&["Вимк", "Слабке", "Середнє", "Сильне"], mi)),
                     r("autohide", "Автоприховування", "Док виїжджає, коли курсор торкається нижнього краю", Ctl::Toggle(a.dock.auto_hide)),
-                    r("taskbar", "Ховати панель задач Windows", "Панель задач виїжджає від краю, тож док не стоїть над нею", Ctl::Toggle(a.taskbar_autohide)),
+                    r("taskbar", "Сховати панель задач Windows", "Лишається тільки док. Панель повернеться, коли вимкнеш це або закриєш DockX", Ctl::Toggle(a.hide_taskbar)),
                 ]
             }
             2 => vec![
@@ -355,7 +360,7 @@ impl SettingsPanel {
         let pick = |list: &[u32], k: i32| list[(k.max(0) as usize).min(list.len() - 1)];
         match id {
             "autostart" => a.autostart = !a.autostart,
-            "taskbar" => a.taskbar_autohide = !a.taskbar_autohide,
+            "taskbar" => a.hide_taskbar = !a.hide_taskbar,
             "fullscreen" => {
                 let on = !(a.dock.hide_in_fullscreen && i.hide_in_fullscreen);
                 a.dock.hide_in_fullscreen = on;
@@ -368,10 +373,11 @@ impl SettingsPanel {
                 return;
             }
             "reset" => {
-                let (keep_autostart, keep_taskbar) = (a.autostart, a.taskbar_autohide);
+                let (keep_autostart, keep_taskbar, keep_prev) = (a.autostart, a.hide_taskbar, a.taskbar_prev_autohide);
                 *a = AppSettings::default();
                 a.autostart = keep_autostart;
-                a.taskbar_autohide = keep_taskbar;
+                a.hide_taskbar = keep_taskbar;
+                a.taskbar_prev_autohide = keep_prev;
                 self.actions.push(SettingsAction::ResetAll);
             }
             "icon_size" => a.dock.icon_size = pick(&[40, 48, 56, 64, 72, 84], v) as i32,

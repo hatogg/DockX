@@ -192,3 +192,37 @@ pub fn taskbar_autohide_set(on: bool) {
         SHAppBarMessage(ABM_SETSTATE, &mut d);
     }
 }
+
+/// The main taskbar and the ones on other monitors.
+fn taskbar_windows() -> Vec<HWND> {
+    use windows::Win32::UI::WindowsAndMessaging::{FindWindowExW, FindWindowW};
+    let mut v = Vec::new();
+    unsafe {
+        if let Ok(h) = FindWindowW(&HSTRING::from("Shell_TrayWnd"), PCWSTR::null()) {
+            v.push(h);
+        }
+        let mut prev = HWND::default();
+        while let Ok(h) = FindWindowExW(None, prev, &HSTRING::from("Shell_SecondaryTrayWnd"), PCWSTR::null()) {
+            if h.is_invalid() {
+                break;
+            }
+            v.push(h);
+            prev = h;
+        }
+    }
+    v
+}
+
+pub fn taskbars_show(show: bool) {
+    use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_HIDE, SW_SHOWNA};
+    for h in taskbar_windows() {
+        unsafe {
+            let _ = ShowWindow(h, if show { SW_SHOWNA } else { SW_HIDE });
+        }
+    }
+}
+
+pub fn taskbars_visible() -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::IsWindowVisible;
+    taskbar_windows().iter().any(|h| unsafe { IsWindowVisible(*h).as_bool() })
+}
