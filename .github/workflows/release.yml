@@ -40,7 +40,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="${{ github.ref_type == 'tag' && github.ref_name || 'v2.2.0' }}"
+          TAG="${{ github.ref_type == 'tag' && github.ref_name || 'v2.2.1' }}"
           for a in $(gh release view "$TAG" --json assets --jq '.assets[].name' 2>/dev/null); do
             [ -f "dist/$a" ] || gh release delete-asset "$TAG" "$a" -y
           done
@@ -48,8 +48,8 @@ jobs:
       - name: Реліз
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v2.2.0' }}
-          name: DockX ${{ github.ref_type == 'tag' && github.ref_name || 'v2.2.0' }}
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v2.2.1' }}
+          name: DockX ${{ github.ref_type == 'tag' && github.ref_name || 'v2.2.1' }}
           body_path: docs/RELEASE.md
           make_latest: true
           files: |

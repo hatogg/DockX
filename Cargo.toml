@@ -1,6 +1,6 @@
 [package]
 name = "dockx"
-version = "2.2.0"
+version = "2.2.1"
 edition = "2021"
 authors = ["X44TO"]
 description = "DockX — macOS-style dock + Dynamic Island for Windows by X44TO"
