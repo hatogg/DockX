@@ -1,0 +1,51 @@
+[package]
+name = "dockx"
+version = "2.0.1"
+edition = "2021"
+authors = ["X44TO"]
+description = "DockX — macOS-style dock + Dynamic Island for Windows by X44TO"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "DockX"
+path = "src/main.rs"
+
+[[bin]]
+name = "demo"
+path = "src/bin/demo.rs"
+
+[dependencies]
+tiny-skia = { version = "0.11", default-features = false, features = ["std", "simd"] }
+fontdue = "0.9"
+serde_json = "1"
+
+[target.'cfg(windows)'.dependencies]
+windows-core = "0.58"
+
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.58"
+features = [
+  "implement",
+  "Foundation", "Foundation_Collections",
+  "Media_Control", "Storage_Streams", "Graphics_Imaging",
+  "Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Dwm",
+  "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Shell", "Win32_UI_Shell_Common",
+  "Win32_UI_HiDpi", "Win32_UI_Controls",
+  "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Ole", "Win32_System_Memory",
+  "Win32_System_SystemServices", "Win32_System_Threading", "Win32_System_LibraryLoader",
+  "Win32_System_Diagnostics_ToolHelp", "Win32_System_Registry", "Win32_System_SystemInformation",
+  "Win32_System_DataExchange", "Win32_System_Variant",
+  "Win32_Storage_FileSystem", "Win32_Media", "Win32_Media_Audio", "Win32_Media_Audio_Endpoints",
+  "Win32_Networking_WinHttp", "Win32_Security",
+  "Win32_System_Wmi", "Win32_NetworkManagement_WiFi", "Win32_Devices_FunctionDiscovery", "Win32_UI_Shell_PropertiesSystem",
+  "Win32_Globalization", "Win32_System_Power", "Win32_System_Time", "Win32_System_ProcessStatus",
+]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
