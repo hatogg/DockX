@@ -1,12 +1,12 @@
 //! «Керування» on Windows: Wi-Fi/Bluetooth radios, airplane mode, mobile hotspot and screen
 //! brightness (worker thread, WinRT/WMI/DDC-CI), plus fast main-thread switches: dark theme,
-//! microphone, keep awake, warm screen (gamma ramp), output device, lock, colour picker.
+//! microphone, keep awake, warm screen (gamma ramp), output device, lock.
 
 #![allow(non_snake_case)]
 
 use super::util::*;
 use crate::ui::island::Controls;
-use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::Duration;
 use windows::core::{interface, IUnknown, IUnknown_Vtbl, BSTR, GUID, HRESULT, PCWSTR, VARIANT};
@@ -23,13 +23,11 @@ use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
 use windows::Win32::Media::Audio::*;
 use windows::Win32::NetworkManagement::WiFi::WlanOpenHandle;
 use windows::Win32::System::Com::*;
-use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Power::*;
 use windows::Win32::System::Registry::*;
 use windows::Win32::System::Shutdown::LockWorkStation;
 use windows::Win32::System::Wmi::*;
 use windows::Win32::UI::ColorSystem::{GetDeviceGammaRamp, SetDeviceGammaRamp};
-use windows::Win32::UI::Input::KeyboardAndMouse::VK_ESCAPE;
 use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::*;
 
@@ -589,104 +587,6 @@ pub fn set_default_output(id: &str) -> bool {
             ok &= pc.SetDefaultEndpoint(PCWSTR(w.as_ptr()), role).is_ok();
         }
         ok
-    }
-}
-
-// ── colour picker: low-level hooks swallow the next click anywhere on screen ──
-
-pub const WM_APP_PICK: u32 = WM_APP + 7;
-static PICKING: AtomicBool = AtomicBool::new(false);
-static SWALLOW_UP: AtomicBool = AtomicBool::new(false);
-static HOOK_MOUSE: AtomicIsize = AtomicIsize::new(0);
-static HOOK_KEYS: AtomicIsize = AtomicIsize::new(0);
-static NOTIFY: AtomicIsize = AtomicIsize::new(0);
-
-fn notify(picked: bool) {
-    let h = NOTIFY.load(Ordering::Relaxed);
-    unsafe {
-        let _ = PostMessageW(HWND(h as *mut _), WM_APP_PICK, WPARAM(picked as usize), LPARAM(0));
-    }
-}
-
-unsafe extern "system" fn mouse_proc(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT {
-    if code >= 0 && PICKING.load(Ordering::Relaxed) {
-        match wp.0 as u32 {
-            WM_LBUTTONDOWN => {
-                SWALLOW_UP.store(true, Ordering::Relaxed);
-                notify(true);
-                return LRESULT(1);
-            }
-            WM_RBUTTONDOWN => {
-                SWALLOW_UP.store(true, Ordering::Relaxed);
-                notify(false);
-                return LRESULT(1);
-            }
-            _ => {}
-        }
-    }
-    if code >= 0 && SWALLOW_UP.load(Ordering::Relaxed) && matches!(wp.0 as u32, WM_LBUTTONUP | WM_RBUTTONUP) {
-        SWALLOW_UP.store(false, Ordering::Relaxed);
-        return LRESULT(1);
-    }
-    CallNextHookEx(None, code, wp, lp)
-}
-
-unsafe extern "system" fn key_proc(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT {
-    if code >= 0 && PICKING.load(Ordering::Relaxed) && wp.0 as u32 == WM_KEYDOWN {
-        let k = &*(lp.0 as *const KBDLLHOOKSTRUCT);
-        if k.vkCode == VK_ESCAPE.0 as u32 {
-            notify(false);
-            return LRESULT(1);
-        }
-    }
-    CallNextHookEx(None, code, wp, lp)
-}
-
-pub fn picker_start(notify_hwnd: HWND) -> bool {
-    if PICKING.load(Ordering::Relaxed) {
-        return true;
-    }
-    unsafe {
-        NOTIFY.store(notify_hwnd.0 as isize, Ordering::Relaxed);
-        let inst = GetModuleHandleW(None).unwrap_or_default();
-        let hm = SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_proc), inst, 0);
-        let hk = SetWindowsHookExW(WH_KEYBOARD_LL, Some(key_proc), inst, 0);
-        let Ok(hm) = hm else { return false };
-        HOOK_MOUSE.store(hm.0 as isize, Ordering::Relaxed);
-        if let Ok(hk) = hk {
-            HOOK_KEYS.store(hk.0 as isize, Ordering::Relaxed);
-        }
-        PICKING.store(true, Ordering::Relaxed);
-        true
-    }
-}
-
-pub fn picker_stop() {
-    PICKING.store(false, Ordering::Relaxed);
-    unsafe {
-        for h in [&HOOK_MOUSE, &HOOK_KEYS] {
-            let v = h.swap(0, Ordering::Relaxed);
-            if v != 0 {
-                let _ = UnhookWindowsHookEx(HHOOK(v as *mut _));
-            }
-        }
-    }
-}
-
-pub fn picking() -> bool {
-    PICKING.load(Ordering::Relaxed)
-}
-
-/// Colour of the screen pixel under the cursor.
-pub fn pixel_at_cursor() -> (u8, u8, u8) {
-    unsafe {
-        let mut p = POINT::default();
-        let _ = GetCursorPos(&mut p);
-        let dc = GetDC(None);
-        let c = GetPixel(dc, p.x, p.y);
-        ReleaseDC(None, dc);
-        let v = c.0;
-        ((v & 0xff) as u8, ((v >> 8) & 0xff) as u8, ((v >> 16) & 0xff) as u8)
     }
 }
 

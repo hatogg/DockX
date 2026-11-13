@@ -14,7 +14,7 @@ use super::mascot::{self, Mood};
 use super::text_field::*;
 use super::theme::*;
 use super::time::{self, Local};
-use super::{prayer, Btn, Mods};
+use super::{Btn, Mods};
 use std::rc::Rc;
 
 // ───────────────────────── data ─────────────────────────
@@ -150,12 +150,6 @@ pub struct IslandSettings {
     pub long_break_min: u32,
     pub battery_notify: bool,
     pub battery_low: bool,
-    pub prayer_on: bool,
-    pub prayer_city: u8,
-    pub prayer_method: u8,
-    pub prayer_hanafi: bool,
-    pub prayer_remind: bool,
-    pub prayer_pause: bool,
     pub widget_a: u8,
     pub widget_b: u8,
     pub world_city: u8,
@@ -194,12 +188,6 @@ impl Default for IslandSettings {
             long_break_min: 15,
             battery_notify: true,
             battery_low: true,
-            prayer_on: false,
-            prayer_city: 0,
-            prayer_method: 0,
-            prayer_hanafi: false,
-            prayer_remind: true,
-            prayer_pause: true,
             widget_a: 0,
             widget_b: 2,
             world_city: 14,
@@ -226,7 +214,6 @@ pub enum Page {
     Water,
     Todo,
     Widgets,
-    Prayer,
     Control,
 }
 
@@ -240,7 +227,6 @@ impl Page {
             Page::Water => Icon::Drop,
             Page::Todo => Icon::List,
             Page::Widgets => Icon::Select,
-            Page::Prayer => Icon::Lyrics,
             Page::Control => Icon::Select,
         }
     }
@@ -253,7 +239,6 @@ impl Page {
             Page::Water => "Вода",
             Page::Todo => "Справи",
             Page::Widgets => "Віджети",
-            Page::Prayer => "Молитва",
             Page::Control => "Керування",
         }
     }
@@ -273,7 +258,6 @@ pub enum NoticeKind {
     BreakDone,
     LowBattery,
     Todo,
-    Prayer,
     // compact cards
     Charging,
     WifiOn,
@@ -300,8 +284,6 @@ pub enum Hud {
     Brightness(f32),
     Caps(bool),
     Layout(String),
-    /// colour picker: colour under the cursor, `true` once it was copied
-    Color(u8, u8, u8, bool),
 }
 
 #[derive(Clone, Debug)]
@@ -485,7 +467,6 @@ pub struct Island {
     notices: Vec<Notice>,
     hud: Option<(Hud, f64)>,
     events: Vec<Event>,
-    prayer_fired: [i64; 6],
 
     s: f32,
     screen: RectF,
@@ -558,7 +539,7 @@ pub struct Island {
     pub ctl: Controls,
     ctl_fill: Vec<Spring>,
     ctl_press: Vec<Spring>,
-    ctl_pending: [f64; 12],
+    ctl_pending: [f64; 11],
     bright_drag: bool,
     bright_set_at: f64,
 }
@@ -595,7 +576,6 @@ impl Island {
             notices: Vec::new(),
             hud: None,
             events: Vec::new(),
-            prayer_fired: [0; 6],
             s: 1.0,
             screen: rect(0.0, 0.0, 1920.0, 1080.0),
             now: 0.0,
@@ -662,9 +642,9 @@ impl Island {
             cursor_local: (-1000.0, -1000.0),
             vol_flash: -10.0,
             ctl: Controls::default(),
-            ctl_fill: (0..12).map(|_| Spring::new(0.0)).collect(),
-            ctl_press: (0..12).map(|_| Spring::new(0.0)).collect(),
-            ctl_pending: [0.0; 12],
+            ctl_fill: (0..11).map(|_| Spring::new(0.0)).collect(),
+            ctl_press: (0..11).map(|_| Spring::new(0.0)).collect(),
+            ctl_pending: [0.0; 11],
             bright_drag: false,
             bright_set_at: -10.0,
         }
@@ -675,11 +655,7 @@ impl Island {
     }
 
     pub fn pages(&self) -> Vec<Page> {
-        let mut v = vec![Page::Today, Page::Control, Page::Music, Page::Shelf, Page::Focus, Page::Water, Page::Todo, Page::Widgets];
-        if self.cfg.prayer_on {
-            v.push(Page::Prayer);
-        }
-        v
+        vec![Page::Today, Page::Control, Page::Music, Page::Shelf, Page::Focus, Page::Water, Page::Todo, Page::Widgets]
     }
 
     fn log(&mut self, icon: Icon, text: String) {
@@ -736,7 +712,6 @@ impl Island {
             Hud::Brightness(_) => self.cfg.hud_brightness,
             Hud::Caps(_) => self.cfg.hud_caps,
             Hud::Layout(_) => self.cfg.hud_layout,
-            Hud::Color(..) => true,
         };
         if on {
             self.hud = Some((h, self.now));
@@ -984,10 +959,7 @@ impl Island {
                 let extra = if l > 0.0 || r > 0.0 { (l + r + 28.0 * s) * if self.cfg.floating { 0.9 } else { 0.55 } } else { 0.0 };
                 (bw + extra, bh, small_r)
             }
-            View::Hud => {
-                let extra = if matches!(self.hud, Some((Hud::Color(..), _))) { 190.0 } else { 120.0 };
-                (bw + extra * s, bh, small_r)
-            }
+            View::Hud => (bw + 120.0 * s, bh, small_r),
             View::Notice => {
                 let k = self.notices.first().map(|n| n.kind).unwrap_or(NoticeKind::Water);
                 if k.compact() {
@@ -1015,7 +987,6 @@ impl Island {
                         (500.0, 158.0 + rows * 30.0)
                     }
                     Page::Widgets => (600.0, 236.0),
-                    Page::Prayer => (600.0, 236.0),
                     Page::Control => (640.0, 278.0),
                 };
                 (w * s, h * s, 30.0 * s)
@@ -1047,14 +1018,6 @@ impl Island {
         (0..self.todos.len()).filter(|&i| self.todos[i].day == self.todo_day && !self.todos[i].removing).collect()
     }
 
-    fn prayer_times(&self) -> Option<[f64; 6]> {
-        if !self.cfg.prayer_on {
-            return None;
-        }
-        let c = time::CITIES.get(self.cfg.prayer_city as usize)?;
-        let m = prayer::METHODS.get(self.cfg.prayer_method as usize).unwrap_or(&prayer::METHODS[0]);
-        Some(prayer::times(self.lt.y, self.lt.m, self.lt.d, c.lat, c.lon, self.tz_min as f64 / 60.0, m, self.cfg.prayer_hanafi))
-    }
 
     // ───────── step ─────────
 
@@ -1079,14 +1042,6 @@ impl Island {
             self.w.snap(w * 0.5);
             self.h.snap(0.0);
             self.rad.snap(r);
-            // prayers already past today don't fire on start
-            if let Some(t) = self.prayer_times() {
-                for (i, h) in t.iter().enumerate() {
-                    if *h * 3600.0 <= self.lt.secs {
-                        self.prayer_fired[i] = self.lt.days;
-                    }
-                }
-            }
         }
         if env.s != self.s || env.screen != self.screen {
             self.s = env.s;
@@ -1178,7 +1133,6 @@ impl Island {
                 NoticeKind::Water => 20.0,
                 NoticeKind::LowBattery => 12.0,
                 NoticeKind::Todo => 30.0,
-                NoticeKind::Prayer => 30.0,
                 _ => 3.2,
             };
             if now - n.start - n.hovered_time > life {
@@ -1304,7 +1258,7 @@ impl Island {
                 || self.todo_field.is_some()
                 || !self.notices.is_empty()
                 || self.view == View::Drop
-                || matches!(self.view, View::Expanded(Page::Water | Page::Widgets | Page::Prayer | Page::Today)))
+                || matches!(self.view, View::Expanded(Page::Water | Page::Widgets | Page::Today)))
         {
             ambient = true;
         }
@@ -1366,25 +1320,6 @@ impl Island {
             self.log(Icon::List, format!("Нагадування: {}", f));
             self.push_notice(NoticeKind::Todo, f);
             self.actions.push(IslandAction::SaveData);
-        }
-        // prayer times
-        if let Some(t) = self.prayer_times() {
-            for i in [0usize, 2, 3, 4, 5] {
-                if self.prayer_fired[i] != day && self.lt.secs >= t[i] * 3600.0 {
-                    self.prayer_fired[i] = day;
-                    // only right at the time (not for prayers that passed before the tab was enabled)
-                    if self.cfg.prayer_remind && self.lt.secs < t[i] * 3600.0 + 120.0 {
-                        self.push_notice(NoticeKind::Prayer, prayer::NAMES[i].to_string());
-                        if self.cfg.prayer_pause && self.media.playing {
-                            self.media.position = self.media.pos_at(self.now);
-                            self.media.sampled_at = self.now;
-                            self.media.playing = false;
-                            self.actions.push(IslandAction::MediaPause);
-                        }
-                    }
-                    self.log(Icon::Lyrics, format!("{} · {}", prayer::NAMES[i], prayer::fmt(t[i])));
-                }
-            }
         }
     }
 
@@ -1584,7 +1519,6 @@ impl Island {
                     Page::Water => self.draw_water(g, r, a, live),
                     Page::Todo => self.draw_todo(g, r, a, live),
                     Page::Widgets => self.draw_widgets(g, r, a, live),
-                    Page::Prayer => self.draw_prayer(g, r, a, live),
                     Page::Control => self.draw_control(g, r, a, live),
                 }
                 let dots_r = if let Some((left, _)) = self.split_rects { rect(left.x + self.ear.v, left.y, left.w - 2.0 * self.ear.v, left.h) } else { r };
@@ -1795,17 +1729,6 @@ impl Island {
                 g.text_in(&self.fonts.bold, &short.to_uppercase(), 10.0 * s, chip, Align::Center, TEXT.alpha(a));
                 g.text_in(&self.fonts.semibold, &name, 13.0 * s, rect(r.x + pad + 32.0 * s, r.y, r.w, r.h), Align::Left, TEXT.alpha(a));
             }
-            Hud::Color(cr, cg, cb, picked) => {
-                let sw = rect(ic.0 - 10.0 * s, cy - 10.0 * s, 20.0 * s, 20.0 * s);
-                g.fill_rrect(sw, 6.0 * s, rgba(cr, cg, cb, 255).alpha(a));
-                g.stroke_rrect(sw, 6.0 * s, rgba(255, 255, 255, 90).alpha(a), s.max(1.0));
-                let hex = format!("#{:02X}{:02X}{:02X}", cr, cg, cb);
-                let x = r.x + pad + 28.0 * s;
-                let tw = self.fonts.semibold.measure(&hex, 13.0 * s);
-                g.text_in(&self.fonts.semibold, &hex, 13.0 * s, rect(x, r.y, r.w, r.h), Align::Left, TEXT.alpha(a));
-                let hint = if picked { "скопійовано" } else { "клік — копіювати" };
-                g.text_in(&self.fonts.regular, hint, 11.5 * s, rect(x + tw + 8.0 * s, r.y, r.w, r.h), Align::Left, if picked { rgba(110, 214, 150, 255) } else { TEXT3 }.alpha(a));
-            }
         }
     }
 
@@ -1857,14 +1780,13 @@ impl Island {
                 None,
             ),
             NoticeKind::Todo => ("Нагадування".into(), ntext.clone(), "Готово", Some("Ок")),
-            NoticeKind::Prayer => (format!("Час молитви: {}", ntext), self.prayer_city_name(), "Ок", None),
             _ => (String::new(), String::new(), "Ок", None),
         };
         if self.cfg.mascot != 0 {
             let mood = match kind {
                 NoticeKind::Water => Mood::Thirsty,
                 NoticeKind::LowBattery => Mood::Sleep,
-                NoticeKind::Todo | NoticeKind::Prayer => Mood::Idle,
+                NoticeKind::Todo => Mood::Idle,
                 _ => Mood::Happy,
             };
             if self.cfg.mascot == 2 {
@@ -1901,10 +1823,6 @@ impl Island {
         let sub = fonts.regular.ellipsize(&sub, 12.0 * s, avail);
         g.text(&fonts.semibold, &title, 15.0 * s, tx, r.cy() - 3.0 * s, TEXT.alpha(a));
         g.text(&fonts.regular, &sub, 12.0 * s, tx, r.cy() + 15.0 * s, TEXT2.alpha(a));
-    }
-
-    fn prayer_city_name(&self) -> String {
-        time::CITIES.get(self.cfg.prayer_city as usize).map(|c| c.name.to_string()).unwrap_or_default()
     }
 
     fn break_len_min(&self) -> u32 {

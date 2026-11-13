@@ -493,14 +493,14 @@ fn main() {
         .wait(1.2);
     sc.cap("Клік — скопіювати знову, потягни — вставити в чат").isl("clip1", 0.5).click().wait(1.2).ev(Ev::Down(Btn::Left)).isl_at("clip0", 0.5, 1.3, 0.3).ev(Ev::GrabText(Some("Турнір StandKnife — субота…".into()))).mv(560.0, 600.0, 1.0).ev(Ev::Up(Btn::Left)).ev(Ev::GrabText(None)).wait(0.9);
     // focus
-    sc.cap("Фокус-таймер: 4 раунди по 25 хвилин").isl("island", 0.8).wait(0.6).isl("dots", 0.4).wait(0.6).isl("page3", 0.3).click().wait(0.6).isl("focus_start", 0.5).click().wait(1.6);
+    sc.cap("Фокус-таймер: 4 раунди по 25 хвилин").isl("island", 0.8).wait(0.6).isl("dots", 0.4).wait(0.6).isl("page4", 0.3).click().wait(0.6).isl("focus_start", 0.5).click().wait(1.6);
     sc.cap("Таймер живе в згорнутому острові").mv(1260.0, 520.0, 0.8).wait(2.2).ev(Ev::FocusEndsIn(1.0)).wait(1.1);
     sc.cap("Сесію завершено — острів сповіщає, маскот радіє").wait(2.6).isl("noticeA", 0.7).click().wait(0.8);
     // water
     sc.cap("Нагадування попити води").ev(Ev::Notice(NoticeKind::Water, String::new())).wait(1.8).isl("noticeA", 0.8).wait(0.2).click().wait(1.4);
-    sc.cap("Вода: обʼєм чашки, норма в мл і графік по годинах").isl("island", 0.8).wait(0.6).isl("dots", 0.4).wait(0.6).isl("page4", 0.3).click().wait(0.8).isl("drink", 0.5).click().wait(2.0);
+    sc.cap("Вода: обʼєм чашки, норма в мл і графік по годинах").isl("island", 0.8).wait(0.6).isl("dots", 0.4).wait(0.6).isl("page5", 0.3).click().wait(0.8).isl("drink", 0.5).click().wait(2.0);
     // todo
-    sc.cap("Справи: календар тижня і нагадування на час").isl("dots", 0.5).wait(0.5).isl("page5", 0.3).click().wait(0.9);
+    sc.cap("Справи: календар тижня і нагадування на час").isl("dots", 0.5).wait(0.5).isl("page6", 0.3).click().wait(0.9);
     sc.isl_at("todo_input", 0.3, 0.5, 0.5).click().ev(Ev::Type("Стрім на TikTok @14:24".into())).wait(1.9).ev(Ev::Key(Key::Enter)).wait(0.6).ev(Ev::Key(Key::Escape)).wait(0.4);
     sc.cap("Перетягни справу, щоб змінити порядок").isl_at("todo2", 0.5, 0.5, 0.6).ev(Ev::Down(Btn::Left)).isl_at("todo0", 0.5, 0.3, 0.9).ev(Ev::Up(Btn::Left)).wait(0.8);
     sc.cap("Дзвіночок ставить нагадування, клік — виконано").isl_at("todo1", 0.5, 0.5, 0.5).wait(0.3).isl("todobell1", 0.3).click().wait(0.6).isl_at("todo1", 0.1, 0.5, 0.4).click().wait(1.0);
@@ -508,15 +508,13 @@ fn main() {
     let t_fire = sc.t + 1.5;
     sc.cap("Час настав — нагадування вискакує з острова").mv(1250.0, 560.0, 0.8).wait(4.6).isl("noticeA", 0.7).wait(0.2).click().wait(0.8);
     // widgets
-    sc.cap("Віджети: календар, світовий час, фаза місяця, відлік, батарея, вода, фокус").isl("island", 0.8).wait(0.6).isl("dots", 0.4).wait(0.6).isl("page6", 0.3).click().wait(0.3).isl("island", 0.4).wait(1.2);
+    sc.cap("Віджети: календар, світовий час, фаза місяця, відлік, батарея, вода, фокус").isl("island", 0.8).wait(0.6).isl("dots", 0.4).wait(0.6).isl("page7", 0.3).click().wait(0.3).isl("island", 0.4).wait(1.2);
     sc.cap("Клік по віджету — інший").isl("widget0", 0.5).click().wait(1.6).isl("widget1", 0.5).click().wait(1.2).click().wait(1.6);
     // settings
     sc.cap("ПКМ по острову → Налаштування…").isl_at("island", 0.5, 0.2, 0.6).rclick().wait(0.5).menu(8, 0.6).wait(0.2).click().wait(1.0);
     sc.cap("Вікно налаштувань у тому ж стилі").set("section:2", 0.7).click().wait(0.9);
     sc.cap("Вигляд: плаваюча пігулка, ефект скла").set("1:1", 0.6).click().wait(1.1).set("3:0", 0.6).click().wait(1.4);
-    sc.cap("Час молитви: окрема вкладка (можна вимкнути)").set("section:8", 0.7).click().wait(0.6).set("0:0", 0.6).click().wait(1.0);
-    sc.set("section:9", 0.6).click().wait(1.0).set("section:10", 0.6).click().wait(1.2).set("close", 0.7).click().wait(0.6);
-    sc.cap("Вкладка «Молитва»: дуга сонця і час для твого міста").isl("island", 0.8).wait(0.6).isl("dots", 0.4).wait(0.6).isl("page7", 0.3).click().wait(0.3).isl("island", 0.4).wait(2.6);
+    sc.set("section:8", 0.6).click().wait(1.0).set("section:9", 0.6).click().wait(1.2).set("close", 0.7).click().wait(0.6);
     sc.ev(Ev::Cfg(|c| {
         c.floating = false;
         c.glass = false;

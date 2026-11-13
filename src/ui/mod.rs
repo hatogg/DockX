@@ -7,7 +7,6 @@ pub mod icons;
 pub mod island;
 pub mod lrc;
 pub mod mascot;
-pub mod prayer;
 pub mod settings;
 pub mod text_field;
 pub mod theme;

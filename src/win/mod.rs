@@ -244,7 +244,6 @@ struct App {
     gamma: controls::Gamma,
     ctl_was_open: bool,
     ctl_local_at: f64,
-    pick_until: f64,
 }
 
 thread_local! {
@@ -758,14 +757,6 @@ impl App {
             self.push_controls(now);
         }
         self.ctl_was_open = open;
-        if controls::picking() {
-            if now > self.pick_until {
-                controls::picker_stop();
-            } else {
-                let (r, g, b) = controls::pixel_at_cursor();
-                self.island.show_hud(Hud::Color(r, g, b, false));
-            }
-        }
     }
 
     fn push_controls(&mut self, now: f64) {
@@ -820,27 +811,10 @@ impl App {
                     controls::open_uri("ms-screenclip:");
                 });
             }
-            Ctl::Picker => {
-                if controls::picker_start(self.hwnd_island) {
-                    self.pick_until = now + 20.0;
-                }
-            }
             Ctl::Lock => controls::lock(),
             Ctl::AudioOut { x, y } => self.modal.push(Modal::AudioMenu(x as i32, y as i32)),
         }
         self.push_controls(now);
-    }
-
-    /// Click (copy) or Esc/right click (cancel) while picking a colour.
-    fn pick_done(&mut self, picked: bool) {
-        let (r, g, b) = controls::pixel_at_cursor();
-        controls::picker_stop();
-        if picked {
-            let hex = format!("#{:02X}{:02X}{:02X}", r, g, b);
-            self.ignore_clip_until = self.now() + 0.6;
-            set_clipboard_text(self.hwnd_island, &hex);
-            self.island.show_hud(Hud::Color(r, g, b, true));
-        }
     }
 
     fn handle_settings_actions(&mut self) {
@@ -1182,7 +1156,6 @@ fn run_modals(hinst: HINSTANCE) {
 }
 
 fn quit_app() {
-    controls::picker_stop();
     with(|a| {
         a.gamma.disable();
         if a.ctl_awake {
@@ -1283,11 +1256,6 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
     let kind = GetWindowLongPtrW(hwnd, GWLP_USERDATA);
     let hinst: HINSTANCE = GetModuleHandleW(None).unwrap_or_default().into();
     match msg {
-        controls::WM_APP_PICK => {
-            with(|a| a.pick_done(wp.0 != 0));
-            pump(hinst);
-            return LRESULT(0);
-        }
         WM_TIMER | WM_APP_FRAME | WM_APP_WAKE => {
             if msg == WM_APP_FRAME {
                 FRAME_PENDING.store(false, Ordering::SeqCst);
@@ -1803,7 +1771,6 @@ pub fn run() {
             gamma: controls::Gamma::new(),
             ctl_was_open: false,
             ctl_local_at: -10.0,
-            pick_until: 0.0,
         };
         APP.with(|a| *a.borrow_mut() = Some(app));
 

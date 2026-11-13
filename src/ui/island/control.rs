@@ -1,5 +1,5 @@
 //! «Керування» page: quick toggles (Wi-Fi, Bluetooth, airplane mode, hotspot, keep awake, dark
-//! theme, microphone, eye protection, screenshot, colour picker, lock, settings) and sliders for
+//! theme, microphone, eye protection, screenshot, lock, settings) and sliders for
 //! screen brightness and volume with an audio-output switcher.
 //! Platform-independent: the host feeds `Controls` and executes `Ctl` commands.
 
@@ -41,7 +41,6 @@ pub enum Ctl {
     MicMute(bool),
     Night(bool),
     Snip,
-    Picker,
     Lock,
     Settings,
     Brightness(f32),
@@ -60,12 +59,11 @@ pub(super) enum Tile {
     Mic,
     Night,
     Snip,
-    Picker,
     Lock,
     Settings,
 }
 
-pub(super) const TILES: [Tile; 12] = [
+pub(super) const TILES: [Tile; 11] = [
     Tile::Wifi,
     Tile::Bluetooth,
     Tile::Airplane,
@@ -75,7 +73,6 @@ pub(super) const TILES: [Tile; 12] = [
     Tile::Mic,
     Tile::Night,
     Tile::Snip,
-    Tile::Picker,
     Tile::Lock,
     Tile::Settings,
 ];
@@ -99,7 +96,7 @@ impl Controls {
             Tile::Dark => self.dark,
             Tile::Mic => self.mic_muted,
             Tile::Night => Some(self.night),
-            Tile::Snip | Tile::Picker | Tile::Lock | Tile::Settings => Some(false),
+            Tile::Snip | Tile::Lock | Tile::Settings => Some(false),
         }
     }
 
@@ -196,7 +193,6 @@ impl Island {
             }
             Tile::Night => "Захист очей".into(),
             Tile::Snip => "Знімок екрана".into(),
-            Tile::Picker => "Піпетка".into(),
             Tile::Lock => "Блокування".into(),
             Tile::Settings => "Параметри".into(),
         }
@@ -342,10 +338,6 @@ impl Island {
                     Tile::Snip => {
                         self.expanded = false;
                         Ctl::Snip
-                    }
-                    Tile::Picker => {
-                        self.expanded = false;
-                        Ctl::Picker
                     }
                     Tile::Lock => Ctl::Lock,
                     Tile::Settings => {
@@ -595,16 +587,6 @@ fn tile_icon(g: &mut Canvas, t: Tile, cx: f32, cy: f32, size: f32, col: Rgba, s:
         Tile::Snip => {
             stroke_pts(g, &[(cx - k * 0.5, cy - k * 0.95), (cx - k * 0.5, cy + k * 0.5), (cx + k * 0.95, cy + k * 0.5)], col, w, false);
             stroke_pts(g, &[(cx - k * 0.95, cy - k * 0.5), (cx + k * 0.5, cy - k * 0.5), (cx + k * 0.5, cy + k * 0.95)], col, w, false);
-        }
-        Tile::Picker => {
-            // pipette, tip down-left
-            let (dx, dy) = (std::f32::consts::FRAC_1_SQRT_2, -std::f32::consts::FRAC_1_SQRT_2);
-            let p0 = (cx - k * 0.85, cy + k * 0.85);
-            let p1 = (cx + dx * k * 0.25, cy + dy * k * 0.25);
-            g.line(p0.0, p0.1, p1.0, p1.1, col, w * 1.4);
-            g.line(cx + dx * k * 0.2 - dy * k * 0.35, cy + dy * k * 0.2 + dx * k * 0.35, cx + dx * k * 0.2 + dy * k * 0.35, cy + dy * k * 0.2 - dx * k * 0.35, col, w * 1.2);
-            let bulb = (cx + dx * k * 0.62, cy + dy * k * 0.62);
-            g.fill_circle(bulb.0, bulb.1, k * 0.36, col);
         }
         Tile::Lock => {
             let body = rect(cx - k * 0.68, cy - k * 0.12, k * 1.36, k * 1.02);

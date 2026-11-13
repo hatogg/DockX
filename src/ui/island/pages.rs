@@ -1,5 +1,5 @@
 //! Island pages: Today, Music (with split karaoke lyrics), Shelf + Clipboard, Focus, Water, To-do,
-//! Widgets, Prayer — plus the page dots and every click handler.
+//! Widgets — plus the page dots and every click handler.
 
 use super::*;
 
@@ -79,14 +79,6 @@ impl Island {
                 let k = (t.day - self.lt.days) * 1440 + m as i64 - now_min as i64;
                 if k >= 0 && best.as_ref().map(|b| k < b.0).unwrap_or(true) {
                     best = Some((k, format!("{} · {:02}:{:02}", t.text, m / 60, m % 60)));
-                }
-            }
-        }
-        if let Some(pt) = self.prayer_times() {
-            for i in [0usize, 2, 3, 4, 5] {
-                let k = (pt[i] * 60.0) as i64 - now_min as i64;
-                if k >= 0 && best.as_ref().map(|b| k < b.0).unwrap_or(true) {
-                    best = Some((k, format!("{} · {}", prayer::NAMES[i], prayer::fmt(pt[i]))));
                 }
             }
         }
@@ -971,108 +963,6 @@ impl Island {
         }
     }
 
-    // ───────── Prayer times ─────────
-
-    pub(super) fn draw_prayer(&mut self, g: &mut Canvas, r: RectF, a: f32, _live: bool) {
-        let s = self.s;
-        let fonts = self.fonts.clone();
-        let pad = 18.0 * s;
-        let Some(t) = self.prayer_times() else { return };
-        let now_h = self.lt.secs / 3600.0;
-        // sun arc
-        let ar = rect(r.x + pad + 6.0 * s, r.y + 34.0 * s, 280.0 * s, 120.0 * s);
-        let base_y = ar.b();
-        let sx = |h: f64| -> f32 {
-            let k = ((h - t[1]) / (t[4] - t[1])).clamp(-0.08, 1.08) as f32;
-            ar.x + ar.w * k
-        };
-        let arc_y = |x: f32| -> f32 {
-            let u = ((x - ar.x) / ar.w) * 2.0 - 1.0;
-            base_y - ar.h * (1.0 - u * u).max(0.0).sqrt()
-        };
-        // horizon
-        g.line(ar.x - 10.0 * s, base_y, ar.r() + 10.0 * s, base_y, rgba(255, 255, 255, (50.0 * a) as u8), 1.0 * s);
-        let mut pb = tiny_skia::PathBuilder::new();
-        let n = 48;
-        for i in 0..=n {
-            let x = ar.x + ar.w * i as f32 / n as f32;
-            if i == 0 {
-                pb.move_to(x, arc_y(x))
-            } else {
-                pb.line_to(x, arc_y(x))
-            }
-        }
-        if let Some(p) = pb.finish() {
-            g.stroke_path(&p, rgba(255, 200, 90, (110.0 * a) as u8), 1.6 * s);
-        }
-        // travelled part
-        if now_h > t[1] {
-            let xe = sx(now_h.min(t[4]));
-            let mut pb = tiny_skia::PathBuilder::new();
-            let steps = 40;
-            for i in 0..=steps {
-                let x = ar.x + (xe - ar.x) * i as f32 / steps as f32;
-                if i == 0 {
-                    pb.move_to(x, arc_y(x))
-                } else {
-                    pb.line_to(x, arc_y(x))
-                }
-            }
-            if let Some(p) = pb.finish() {
-                g.stroke_path_cap(&p, rgba(255, 196, 70, (255.0 * a) as u8), 3.0 * s, tiny_skia::LineCap::Round);
-            }
-        }
-        for (i, name) in prayer::NAMES.iter().enumerate() {
-            if i == 0 || i == 5 {
-                continue;
-            }
-            let x = sx(t[i]);
-            let y = arc_y(x.clamp(ar.x, ar.r()));
-            g.fill_circle(x, y, 3.5 * s, rgba(255, 255, 255, (200.0 * a) as u8));
-            let lbl = fonts.regular.ellipsize(name, 10.0 * s, 60.0 * s);
-            g.text_center(&fonts.regular, &lbl, 10.0 * s, x, y - 9.0 * s, TEXT3.alpha(a));
-        }
-        if now_h >= t[1] && now_h <= t[4] {
-            let x = sx(now_h);
-            let y = arc_y(x);
-            g.radial(x, y, 20.0 * s, rgba(255, 196, 70, (120.0 * a) as u8), rgba(255, 196, 70, 0));
-            g.fill_circle(x, y, 8.0 * s, rgba(255, 210, 90, (255.0 * a) as u8));
-        } else {
-            let x = if now_h < t[1] { ar.x - 2.0 * s } else { ar.r() + 2.0 * s };
-            if let Some(p) = moon_lit(x, base_y - 16.0 * s, 8.0 * s, 0.3) {
-                g.fill_path(&p, rgba(230, 230, 240, (230.0 * a) as u8));
-            }
-        }
-        let city = self.prayer_city_name();
-        let method = prayer::METHODS.get(self.cfg.prayer_method as usize).map(|m| m.name).unwrap_or("");
-        g.text(&fonts.semibold, &city, 13.0 * s, r.x + pad, r.y + pad + 4.0 * s, TEXT.alpha(a));
-        let cw = fonts.semibold.measure(&city, 13.0 * s);
-        g.text(&fonts.regular, &format!("· {}", method), 11.0 * s, r.x + pad + cw + 6.0 * s, r.y + pad + 4.0 * s, TEXT3.alpha(a));
-        // list
-        let lx = r.x + 330.0 * s;
-        let lw = r.r() - pad - lx;
-        let next = [0usize, 2, 3, 4, 5].into_iter().find(|&i| t[i] > now_h);
-        let head = match next {
-            Some(i) => format!("{} через {}", prayer::NAMES[i], time::span((t[i] - now_h) * 3600.0)),
-            None => "Фаджр — завтра".to_string(),
-        };
-        g.text(&fonts.semibold, &head, 13.0 * s, lx, r.y + pad + 4.0 * s, ACCENT.mix(TEXT, 0.3).alpha(a));
-        let mut y = r.y + 34.0 * s;
-        for i in 0..6 {
-            let row = rect(lx - 8.0 * s, y, lw + 16.0 * s, 25.0 * s);
-            if Some(i) == next {
-                g.fill_rrect(row, 10.0 * s, ACCENT_DARK.alpha(a));
-            }
-            let past = t[i] < now_h && Some(i) != next;
-            let col = if past { TEXT3 } else { TEXT };
-            g.text(&fonts.regular, prayer::NAMES[i], 12.5 * s, lx, row.cy() + 4.5 * s, col.alpha(a));
-            let tt = prayer::fmt(t[i]);
-            let tw = fonts.semibold.measure(&tt, 12.5 * s);
-            g.text(&fonts.semibold, &tt, 12.5 * s, lx + lw - tw, row.cy() + 4.5 * s, col.alpha(a));
-            y += 26.0 * s;
-        }
-    }
-
     // ───────── page dots / icon bar ─────────
 
     pub(super) fn draw_dots(&mut self, g: &mut Canvas, r: RectF, a: f32, live: bool) {
@@ -1108,11 +998,7 @@ impl Island {
                 } else if hot {
                     g.fill_rrect(rect(cx - 14.0 * s, cy - 12.0 * s, 28.0 * s, 24.0 * s), 12.0 * s, CONTROL_HOVER.alpha(ia));
                 }
-                if *p == Page::Prayer {
-                    if let Some(path) = moon_lit(cx, cy, 6.5 * s, 0.85) {
-                        g.fill_path(&path, if active || hot { TEXT } else { TEXT2 }.alpha(ia));
-                    }
-                } else if *p == Page::Control {
+                if *p == Page::Control {
                     control::sliders_icon(g, cx, cy, 14.0 * s, if active || hot { TEXT } else { TEXT2 }.alpha(ia), s);
                 } else if *p == Page::Widgets {
                     for (dx, dy) in [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {

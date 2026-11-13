@@ -7,7 +7,7 @@ use super::icons::{self, Icon};
 use super::island::{IslandSettings, WIDGETS};
 use super::text_field::*;
 use super::theme::*;
-use super::{prayer, time, Btn};
+use super::{time, Btn};
 use std::rc::Rc;
 
 #[derive(Clone, Debug)]
@@ -61,12 +61,6 @@ pub fn to_ini(a: &AppSettings, items: &[DockItem]) -> String {
         ("LongBreak", i.long_break_min.to_string()),
         ("BatteryNotify", b(i.battery_notify).into()),
         ("BatteryLow", b(i.battery_low).into()),
-        ("Prayer", b(i.prayer_on).into()),
-        ("PrayerCity", i.prayer_city.to_string()),
-        ("PrayerMethod", i.prayer_method.to_string()),
-        ("PrayerHanafi", b(i.prayer_hanafi).into()),
-        ("PrayerRemind", b(i.prayer_remind).into()),
-        ("PrayerPause", b(i.prayer_pause).into()),
         ("WidgetA", i.widget_a.to_string()),
         ("WidgetB", i.widget_b.to_string()),
         ("WorldCity", i.world_city.to_string()),
@@ -133,12 +127,6 @@ pub fn from_ini(text: &str) -> (AppSettings, Vec<(String, String)>) {
             "LongBreak" => i.long_break_min = u(15).clamp(1, 90),
             "BatteryNotify" => i.battery_notify = on,
             "BatteryLow" => i.battery_low = on,
-            "Prayer" => i.prayer_on = on,
-            "PrayerCity" => i.prayer_city = u8v(0).min(time::CITIES.len() as u8 - 1),
-            "PrayerMethod" => i.prayer_method = u8v(0).min(prayer::METHODS.len() as u8 - 1),
-            "PrayerHanafi" => i.prayer_hanafi = on,
-            "PrayerRemind" => i.prayer_remind = on,
-            "PrayerPause" => i.prayer_pause = on,
             "WidgetA" => i.widget_a = u8v(0) % WIDGETS.len() as u8,
             "WidgetB" => i.widget_b = u8v(2) % WIDGETS.len() as u8,
             "WorldCity" => i.world_city = u8v(14).min(time::CITIES.len() as u8 - 1),
@@ -202,7 +190,7 @@ enum SHot {
     Header,
 }
 
-const SECTIONS: [&str; 11] = ["Загальне", "Док", "Острів", "Музика", "Полиця і буфер", "Фокус", "Вода", "Віджети", "Молитва", "Індикатори", "Про програму"];
+const SECTIONS: [&str; 10] = ["Загальне", "Док", "Острів", "Музика", "Полиця і буфер", "Фокус", "Вода", "Віджети", "Індикатори", "Про програму"];
 
 pub struct SettingsPanel {
     pub app: AppSettings,
@@ -340,19 +328,7 @@ impl SettingsPanel {
                     r("cd_date", "Зворотний відлік: дата", "Формат РРРР-ММ-ДД", Ctl::Text(i.countdown_date.clone())),
                 ]
             }
-            8 => {
-                let cities: Vec<&str> = time::CITIES.iter().map(|c| c.name).collect();
-                let methods: Vec<&str> = prayer::METHODS.iter().map(|m| m.name).collect();
-                vec![
-                    r("prayer_on", "Вкладка «Молитва»", "Час молитов з дугою сонця", Ctl::Toggle(i.prayer_on)),
-                    r("prayer_city", "Місто", "Розрахунок локальний, без інтернету", ch(&cities, i.prayer_city as usize)),
-                    r("prayer_method", "Метод розрахунку", "", ch(&methods, i.prayer_method as usize)),
-                    r("prayer_asr", "Аср", "", ch(&["Шафіі (стандарт)", "Ханафі"], if i.prayer_hanafi { 1 } else { 0 })),
-                    r("prayer_remind", "Нагадування", "Сповіщення в острові в час молитви", Ctl::Toggle(i.prayer_remind)),
-                    r("prayer_pause", "Пауза музики", "Автоматично ставити плеєр на паузу", Ctl::Toggle(i.prayer_pause)),
-                ]
-            }
-            9 => vec![
+            8 => vec![
                 r("hud_volume", "Гучність", "Індикатор при зміні гучності", Ctl::Toggle(i.hud_volume)),
                 r("hud_brightness", "Яскравість", "Індикатор при зміні яскравості екрана", Ctl::Toggle(i.hud_brightness)),
                 r("hud_caps", "Caps Lock", "", Ctl::Toggle(i.hud_caps)),
@@ -417,12 +393,6 @@ impl SettingsPanel {
             "widget_a" => i.widget_a = v.rem_euclid(WIDGETS.len() as i32) as u8,
             "widget_b" => i.widget_b = v.rem_euclid(WIDGETS.len() as i32) as u8,
             "world_city" => i.world_city = v.rem_euclid(time::CITIES.len() as i32) as u8,
-            "prayer_on" => i.prayer_on = !i.prayer_on,
-            "prayer_city" => i.prayer_city = v.rem_euclid(time::CITIES.len() as i32) as u8,
-            "prayer_method" => i.prayer_method = v.rem_euclid(prayer::METHODS.len() as i32) as u8,
-            "prayer_asr" => i.prayer_hanafi = v == 1,
-            "prayer_remind" => i.prayer_remind = !i.prayer_remind,
-            "prayer_pause" => i.prayer_pause = !i.prayer_pause,
             "hud_volume" => i.hud_volume = !i.hud_volume,
             "hud_brightness" => i.hud_brightness = !i.hud_brightness,
             "hud_caps" => i.hud_caps = !i.hud_caps,

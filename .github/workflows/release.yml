@@ -40,8 +40,8 @@ jobs:
       - name: Реліз
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v2.1.0' }}
-          name: DockX ${{ github.ref_type == 'tag' && github.ref_name || 'v2.1.0' }}
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v2.2.0' }}
+          name: DockX ${{ github.ref_type == 'tag' && github.ref_name || 'v2.2.0' }}
           body_path: docs/RELEASE.md
           make_latest: true
           files: |
