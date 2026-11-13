@@ -19,10 +19,6 @@
 
 <sub>🇬🇧 DockX is a macOS-style dock plus a Dynamic Island for Windows 10/11 in one 1.5 MB Rust app: music with synced lyrics, file shelf, clipboard history, focus timer, water tracker, to-dos with reminders, widgets, quick settings (Wi-Fi, Bluetooth, brightness, volume) and system indicators.</sub>
 
-<p align="center">
-  <a href="docs/DockX-demo.mp4"><b>▶ Відео з усіма функціями (3,5 хв)</b></a>
-</p>
-
 ## Dynamic Island
 
 <p align="center"><img src="docs/island.gif" width="100%" alt="Острів розгортається: плеєр і караоке-текст в одному острові"></p>
@@ -106,11 +102,11 @@ cargo build --release            # target\release\DockX.exe
 makensis installer/dockx.nsi     # інсталятор у dist/
 ```
 
-`cargo run --release --bin demo <папка> | ffmpeg …` рендерить демо-відео тим самим кодом малювання, що й програма.
+`cargo run --release --bin demo <папка> | ffmpeg …` рендерить кадри для скріншотів і GIF тим самим кодом малювання, що й програма.
 
 | Папка | Що всередині |
 |---|---|
-| `src/ui/` | Малювання, док, острів, налаштування. Не залежить від Windows, тому з того ж коду рендериться відео. |
+| `src/ui/` | Малювання, док, острів, налаштування. Не залежить від Windows, тому з того ж коду рендеряться скріншоти. |
 | `src/win/` | Шар Windows: layered-вікна, vsync-цикл, медіасесія (GSMTC), WinHTTP, OLE drag & drop, меню, батарея, гучність, Wi-Fi, яскравість. |
 | `installer/` | Інсталятор NSIS. |
 | `brand/` | Іконка, картинки інсталятора й обкладинки (Python + Pillow). |

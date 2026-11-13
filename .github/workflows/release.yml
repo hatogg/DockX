@@ -34,7 +34,6 @@ jobs:
           cp dist/DockX.exe LICENSE portable/DockX/
           cp docs/README-app.md portable/DockX/README.md
           (cd portable && zip -9 -r ../dist/DockX-portable.zip DockX)
-          cp docs/DockX-demo.mp4 dist/
           ls -la dist
 
       - name: Реліз
@@ -47,4 +46,3 @@ jobs:
           files: |
             dist/DockX-Setup.exe
             dist/DockX-portable.zip
-            dist/DockX-demo.mp4
