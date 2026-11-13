@@ -70,6 +70,8 @@ unsafe fn hbitmap_to_pixmap(hbm: HBITMAP) -> Option<Pixmap> {
             px[i] = 255;
         }
     }
+    // Store-app shortcuts come back «plated»: the logo on a flat opaque square. Cut that plate away.
+    gfx::unplate(&mut px, w, hgt);
     // shell bitmaps are premultiplied already (32bpp with alpha)
     let mut pm = Pixmap::new(w as u32, hgt as u32)?;
     pm.data_mut().copy_from_slice(&px);

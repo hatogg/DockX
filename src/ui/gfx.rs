@@ -684,3 +684,183 @@ pub fn fallback_icon(name: &str, fonts: &Fonts, size: u32) -> Pixmap {
     c.text_in(&fonts.bold, &letter, s * 0.46, r, Align::Center, rgba(255, 255, 255, 255));
     c.pm
 }
+
+/// Store-app shortcuts come back «plated»: the logo on a flat opaque square, either filling the
+/// whole image or sitting in a transparent canvas. Makes the plate transparent by flood-filling it
+/// from the square's edges, with soft alpha on the anti-aliased rim. Leaves anything else alone.
+/// `px` is premultiplied RGBA.
+pub fn unplate(px: &mut [u8], w: usize, h: usize) {
+    // the opaque rectangle: bounding box of visible pixels, which must all be fully opaque
+    let (mut x0, mut y0, mut x1, mut y1) = (w, h, 0usize, 0usize);
+    for y in 0..h {
+        for x in 0..w {
+            if px[(y * w + x) * 4 + 3] > 0 {
+                x0 = x0.min(x);
+                y0 = y0.min(y);
+                x1 = x1.max(x);
+                y1 = y1.max(y);
+            }
+        }
+    }
+    if x1 < x0 + 8 || y1 < y0 + 8 {
+        return;
+    }
+    for y in y0..=y1 {
+        for x in x0..=x1 {
+            if px[(y * w + x) * 4 + 3] != 255 {
+                return;
+            }
+        }
+    }
+    let (bw, bh) = (x1 - x0 + 1, y1 - y0 + 1);
+    let at = |x: usize, y: usize| -> [i32; 3] {
+        let i = ((y0 + y) * w + x0 + x) * 4;
+        [px[i] as i32, px[i + 1] as i32, px[i + 2] as i32]
+    };
+    let bg = at(0, 0);
+    let dist = |c: [i32; 3]| (c[0] - bg[0]).abs().max((c[1] - bg[1]).abs()).max((c[2] - bg[2]).abs());
+    const HARD: i32 = 10;
+    const SOFT: i32 = 70;
+    // the plate must run all around the edge
+    let mut edge = Vec::new();
+    for x in 0..bw {
+        edge.push((x, 0));
+        edge.push((x, bh - 1));
+    }
+    for y in 0..bh {
+        edge.push((0, y));
+        edge.push((bw - 1, y));
+    }
+    if edge.iter().any(|&(x, y)| dist(at(x, y)) > HARD) {
+        return;
+    }
+    let mut plate = vec![false; bw * bh];
+    let mut stack = edge;
+    while let Some((x, y)) = stack.pop() {
+        let i = y * bw + x;
+        if plate[i] || dist(at(x, y)) > HARD {
+            continue;
+        }
+        plate[i] = true;
+        if x > 0 {
+            stack.push((x - 1, y));
+        }
+        if x + 1 < bw {
+            stack.push((x + 1, y));
+        }
+        if y > 0 {
+            stack.push((x, y - 1));
+        }
+        if y + 1 < bh {
+            stack.push((x, y + 1));
+        }
+    }
+    let cut = plate.iter().filter(|p| **p).count();
+    // all one colour, or almost nothing left: a real flat icon, keep it
+    if cut == 0 || cut > bw * bh * 92 / 100 {
+        return;
+    }
+    let mut alpha = vec![255u8; bw * bh];
+    for y in 0..bh {
+        for x in 0..bw {
+            let i = y * bw + x;
+            alpha[i] = if plate[i] {
+                0
+            } else {
+                let near = (x > 0 && plate[i - 1]) || (x + 1 < bw && plate[i + 1]) || (y > 0 && plate[i - bw]) || (y + 1 < bh && plate[i + bw]);
+                let d = dist(at(x, y));
+                if near && d < SOFT {
+                    ((d - HARD).max(0) * 255 / (SOFT - HARD)) as u8
+                } else {
+                    255
+                }
+            };
+        }
+    }
+    for y in 0..bh {
+        for x in 0..bw {
+            let a = alpha[y * bw + x] as u32;
+            let o = ((y0 + y) * w + x0 + x) * 4;
+            for c in 0..3 {
+                px[o + c] = (px[o + c] as u32 * a / 255) as u8;
+            }
+            px[o + 3] = a as u8;
+        }
+    }
+}
+
+#[cfg(test)]
+mod unplate_tests {
+    use super::unplate;
+
+    /// 64x64 grey plate with a 30x30 orange square in the middle
+    fn plated() -> Vec<u8> {
+        let mut px = vec![0u8; 64 * 64 * 4];
+        for y in 0..64 {
+            for x in 0..64 {
+                let i = (y * 64 + x) * 4;
+                let c = if (17..47).contains(&x) && (17..47).contains(&y) { [217, 119, 87] } else { [62, 62, 66] };
+                px[i..i + 3].copy_from_slice(&c);
+                px[i + 3] = 255;
+            }
+        }
+        px
+    }
+
+    #[test]
+    fn plate_becomes_transparent() {
+        let mut px = plated();
+        unplate(&mut px, 64, 64);
+        assert_eq!(px[3], 0, "corner must be transparent");
+        let mid = (32 * 64 + 32) * 4;
+        assert_eq!(&px[mid..mid + 4], &[217, 119, 87, 255], "logo must stay");
+    }
+
+    #[test]
+    fn plate_inside_transparent_canvas() {
+        // 96x96 transparent canvas, the plated 64x64 square at (16,16)
+        let plate = plated();
+        let mut px = vec![0u8; 96 * 96 * 4];
+        for y in 0..64 {
+            for x in 0..64 {
+                let s = (y * 64 + x) * 4;
+                let d = ((y + 16) * 96 + x + 16) * 4;
+                px[d..d + 4].copy_from_slice(&plate[s..s + 4]);
+            }
+        }
+        unplate(&mut px, 96, 96);
+        assert_eq!(px[(16 * 96 + 16) * 4 + 3], 0, "plate corner must be transparent");
+        let mid = (48 * 96 + 48) * 4;
+        assert_eq!(&px[mid..mid + 4], &[217, 119, 87, 255]);
+    }
+
+    #[test]
+    fn rounded_icon_with_alpha_is_kept() {
+        // soft edges (alpha < 255 inside the box) mean a real icon with its own shape
+        let mut px = plated();
+        px[(20 * 64 + 20) * 4 + 3] = 128;
+        let before = px.clone();
+        unplate(&mut px, 64, 64);
+        assert_eq!(px, before);
+    }
+
+    #[test]
+    fn real_square_picture_is_kept() {
+        // border differs from the inside but there is no plate around anything: a full-bleed photo
+        let mut px = vec![255u8; 32 * 32 * 4];
+        for (i, p) in px.chunks_exact_mut(4).enumerate() {
+            p[0] = (i % 251) as u8;
+        }
+        let before = px.clone();
+        unplate(&mut px, 32, 32);
+        assert_eq!(px, before);
+    }
+
+    #[test]
+    fn flat_square_is_kept() {
+        let mut px = vec![200u8; 16 * 16 * 4];
+        let before = px.clone();
+        unplate(&mut px, 16, 16);
+        assert_eq!(px, before, "an all-one-colour image is a real icon, not a plate");
+    }
+}

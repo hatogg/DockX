@@ -26,7 +26,7 @@ use std::time::{Duration, Instant};
 use util::*;
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::*;
-use windows::Win32::Graphics::Dwm::DwmFlush;
+use windows::Win32::Graphics::Dwm::{DwmFlush, DwmGetWindowAttribute, DWMWA_CLOAKED};
 use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::Media::Audio::{PlaySoundW, SND_ALIAS, SND_ASYNC, SND_NODEFAULT};
 use windows::Win32::Media::{timeBeginPeriod, timeEndPeriod};
@@ -244,6 +244,7 @@ struct App {
     gamma: controls::Gamma,
     ctl_was_open: bool,
     ctl_local_at: f64,
+    fs_since: f64,
 }
 
 thread_local! {
@@ -348,6 +349,9 @@ impl App {
         self.island.kick();
         if autostart_get("DockX") != self.cfg.autostart {
             autostart_set("DockX", self.cfg.autostart);
+        }
+        if taskbar_autohide_get() != self.cfg.taskbar_autohide {
+            taskbar_autohide_set(self.cfg.taskbar_autohide);
         }
         self.save_cfg_at = self.now() + 0.4;
     }
@@ -524,7 +528,7 @@ impl App {
             self.running = map;
             let mut changed = false;
             for it in &mut self.dock.items {
-                let r = it.target.as_ref().map(|t| self.running.contains_key(&t.to_lowercase())).unwrap_or(false);
+                let r = pids_for(&self.running, it).is_some();
                 if r != it.running {
                     it.running = r;
                     changed = true;
@@ -568,7 +572,17 @@ impl App {
         }
         if now - self.last_fs > 0.5 {
             self.last_fs = now;
-            self.fullscreen = self.fullscreen_active();
+            // hide only when a fullscreen window stays in front (~1 s): task view, overlays or a
+            // window flashing through fullscreen while switching must not make everything blink
+            if self.fullscreen_active() {
+                if self.fs_since < 0.0 {
+                    self.fs_since = now;
+                }
+                self.fullscreen = now - self.fs_since >= 0.9;
+            } else {
+                self.fs_since = -1.0;
+                self.fullscreen = false;
+            }
         }
     }
 
@@ -586,7 +600,25 @@ impl App {
             let mut cls = [0u16; 64];
             let n = GetClassNameW(h, &mut cls);
             let cls = String::from_utf16_lossy(&cls[..n as usize]);
-            if cls == "Progman" || cls == "WorkerW" || cls == "Shell_TrayWnd" {
+            if matches!(
+                cls.as_str(),
+                "Progman" | "WorkerW" | "Shell_TrayWnd" | "MultitaskingViewFrame" | "XamlExplorerHostIslandWindow" | "ForegroundStaging" | "Windows.UI.Core.CoreWindow"
+            ) {
+                return false;
+            }
+            // our own windows (settings, menus)
+            let mut pid = 0u32;
+            GetWindowThreadProcessId(h, Some(&mut pid));
+            if pid == std::process::id() {
+                return false;
+            }
+            // click-through or non-activating overlays (recording frames, screen dimmers…) are not games
+            let ex = GetWindowLongW(h, GWL_EXSTYLE) as u32;
+            if ex & (WS_EX_TRANSPARENT.0 | WS_EX_NOACTIVATE.0) != 0 || !IsWindowVisible(h).as_bool() {
+                return false;
+            }
+            let mut cloaked = 0u32;
+            if DwmGetWindowAttribute(h, DWMWA_CLOAKED, &mut cloaked as *mut u32 as *mut _, 4).is_ok() && cloaked != 0 {
                 return false;
             }
             if (GetWindowLongW(h, GWL_STYLE) as u32 & WS_CAPTION.0) == WS_CAPTION.0 {
@@ -640,18 +672,16 @@ impl App {
 
     fn refresh_running(&mut self) {
         for it in &mut self.dock.items {
-            it.running = it.target.as_ref().map(|t| self.running.contains_key(&t.to_lowercase())).unwrap_or(false);
+            it.running = pids_for(&self.running, it).is_some();
         }
     }
 
     fn activate(&mut self, idx: usize, new_instance: bool, admin: bool) {
         let Some(it) = self.dock.items.get(idx) else { return };
         if !new_instance && !admin && it.running && !it.is_explorer() {
-            if let Some(t) = &it.target {
-                if let Some(pids) = self.running.get(&t.to_lowercase()) {
-                    if shell::focus_pids(pids) {
-                        return;
-                    }
+            if let Some(pids) = pids_for(&self.running, it) {
+                if shell::focus_pids(pids) {
+                    return;
                 }
             }
         }
@@ -855,6 +885,7 @@ impl App {
         }
         let mut cfg = self.cfg.clone();
         cfg.autostart = autostart_get("DockX");
+        cfg.taskbar_autohide = taskbar_autohide_get();
         cfg.island = self.island.cfg.clone();
         let mut panel = SettingsPanel::new(cfg, self.fonts.clone(), self.s);
         panel.version = env!("CARGO_PKG_VERSION").into();
@@ -1153,6 +1184,23 @@ fn run_modals(hinst: HINSTANCE) {
             }
         }
     }
+}
+
+/// Processes of a dock item. Shortcuts to Store apps have no .exe target, so they match by name:
+/// «Claude.lnk» ↔ …\WindowsApps\…\claude.exe.
+fn pids_for<'a>(running: &'a HashMap<String, Vec<u32>>, it: &DockItem) -> Option<&'a Vec<u32>> {
+    if let Some(t) = &it.target {
+        return running.get(&t.to_lowercase());
+    }
+    let low = it.path.to_lowercase();
+    if !low.ends_with(".lnk") {
+        return None;
+    }
+    let stem = std::path::Path::new(&low).file_stem()?.to_string_lossy().to_string();
+    running
+        .iter()
+        .find(|(p, _)| std::path::Path::new(p.as_str()).file_stem().map(|f| f.to_string_lossy() == stem).unwrap_or(false))
+        .map(|(_, v)| v)
 }
 
 fn quit_app() {
@@ -1650,6 +1698,7 @@ pub fn run() {
         None => (AppSettings::default(), default_items()),
     };
     cfg.autostart = autostart_get("DockX");
+    cfg.taskbar_autohide = taskbar_autohide_get();
     let items: Vec<DockItem> = item_defs.iter().map(|(p, n)| make_item(p, n, &fonts)).collect();
     let dock = Dock::new(cfg.dock.clone(), items, fonts.clone());
     let mut island = Island::new(cfg.island.clone(), fonts.clone());
@@ -1771,6 +1820,7 @@ pub fn run() {
             gamma: controls::Gamma::new(),
             ctl_was_open: false,
             ctl_local_at: -10.0,
+            fs_since: -1.0,
         };
         APP.with(|a| *a.borrow_mut() = Some(app));
 

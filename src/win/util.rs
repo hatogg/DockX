@@ -172,3 +172,23 @@ pub fn set_clipboard_text(hwnd: HWND, text: &str) -> bool {
         ok
     }
 }
+
+/// Windows' taskbar «Automatically hide» setting.
+pub fn taskbar_autohide_get() -> bool {
+    use windows::Win32::UI::Shell::{SHAppBarMessage, ABM_GETSTATE, ABS_AUTOHIDE, APPBARDATA};
+    unsafe {
+        let mut d = APPBARDATA { cbSize: std::mem::size_of::<APPBARDATA>() as u32, ..Default::default() };
+        SHAppBarMessage(ABM_GETSTATE, &mut d) as u32 & ABS_AUTOHIDE != 0
+    }
+}
+
+pub fn taskbar_autohide_set(on: bool) {
+    use windows::Win32::UI::Shell::{SHAppBarMessage, ABM_SETSTATE, ABS_ALWAYSONTOP, ABS_AUTOHIDE, APPBARDATA};
+    use windows::Win32::UI::WindowsAndMessaging::FindWindowW;
+    unsafe {
+        let tray = FindWindowW(&HSTRING::from("Shell_TrayWnd"), PCWSTR::null()).unwrap_or_default();
+        let state = if on { ABS_AUTOHIDE } else { ABS_ALWAYSONTOP };
+        let mut d = APPBARDATA { cbSize: std::mem::size_of::<APPBARDATA>() as u32, hWnd: tray, lParam: LPARAM(state as isize), ..Default::default() };
+        SHAppBarMessage(ABM_SETSTATE, &mut d);
+    }
+}

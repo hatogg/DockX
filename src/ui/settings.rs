@@ -16,11 +16,13 @@ pub struct AppSettings {
     pub island: IslandSettings,
     pub autostart: bool,
     pub show_dock: bool,
+    /// Windows' own taskbar auto-hide (read from and written to the system, not dock.ini)
+    pub taskbar_autohide: bool,
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
-        AppSettings { dock: DockSettings::default(), island: IslandSettings::default(), autostart: false, show_dock: true }
+        AppSettings { dock: DockSettings::default(), island: IslandSettings::default(), autostart: false, show_dock: true, taskbar_autohide: false }
     }
 }
 
@@ -272,6 +274,7 @@ impl SettingsPanel {
                     r("icon_size", "Розмір іконок", "", ch(&["40", "48", "56", "64", "72", "84"], si)),
                     r("magnify", "Збільшення при наведенні", "", ch(&["Вимк", "Слабке", "Середнє", "Сильне"], mi)),
                     r("autohide", "Автоприховування", "Док виїжджає, коли курсор торкається нижнього краю", Ctl::Toggle(a.dock.auto_hide)),
+                    r("taskbar", "Ховати панель задач Windows", "Панель задач виїжджає від краю, тож док не стоїть над нею", Ctl::Toggle(a.taskbar_autohide)),
                 ]
             }
             2 => vec![
@@ -352,6 +355,7 @@ impl SettingsPanel {
         let pick = |list: &[u32], k: i32| list[(k.max(0) as usize).min(list.len() - 1)];
         match id {
             "autostart" => a.autostart = !a.autostart,
+            "taskbar" => a.taskbar_autohide = !a.taskbar_autohide,
             "fullscreen" => {
                 let on = !(a.dock.hide_in_fullscreen && i.hide_in_fullscreen);
                 a.dock.hide_in_fullscreen = on;
@@ -364,9 +368,10 @@ impl SettingsPanel {
                 return;
             }
             "reset" => {
-                let keep_autostart = a.autostart;
+                let (keep_autostart, keep_taskbar) = (a.autostart, a.taskbar_autohide);
                 *a = AppSettings::default();
                 a.autostart = keep_autostart;
+                a.taskbar_autohide = keep_taskbar;
                 self.actions.push(SettingsAction::ResetAll);
             }
             "icon_size" => a.dock.icon_size = pick(&[40, 48, 56, 64, 72, 84], v) as i32,
