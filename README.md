@@ -15,9 +15,9 @@
   <img alt="MIT" src="https://img.shields.io/badge/license-MIT-555?style=flat-square">
 </p>
 
-**DockX** — док у стилі macOS і Dynamic Island у стилі Nusa для Windows. Обидва в одній програмі на 1,5 МБ, написаній на Rust. Без .NET, рантаймів, реклами й трекерів, українською.
+**DockX** — док у стилі macOS і Dynamic Island для Windows. Обидва в одній програмі на 1,5 МБ, написаній на Rust. Без .NET, рантаймів, реклами й трекерів, українською.
 
-<sub>🇬🇧 DockX is a macOS-style dock plus a Nusa-style Dynamic Island for Windows 10/11 in one 1.5 MB Rust app: music with synced lyrics, file shelf, clipboard history, focus timer, water tracker, to-dos with reminders, widgets, prayer times and system indicators.</sub>
+<sub>🇬🇧 DockX is a macOS-style dock plus a Dynamic Island for Windows 10/11 in one 1.5 MB Rust app: music with synced lyrics, file shelf, clipboard history, focus timer, water tracker, to-dos with reminders, widgets, prayer times and system indicators.</sub>
 
 <p align="center">
   <a href="docs/DockX-demo.mp4"><b>▶ Відео з усіма функціями (3,5 хв)</b></a>
@@ -82,7 +82,7 @@
 
 ## Що не робить і чому
 
-Перехоплювати системні сповіщення Windows дозволено лише програмам з Microsoft Store. Сама Nusa теж пише, що ця функція є тільки у Store-версії. Замість цього на сторінці «Сьогодні» є стрічка подій острова.
+Перехоплювати системні сповіщення Windows дозволено лише програмам з Microsoft Store. Замість цього на сторінці «Сьогодні» є стрічка подій острова.
 
 ## Файли
 

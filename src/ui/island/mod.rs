@@ -1,4 +1,4 @@
-//! Dynamic Island — a full copy of Nusa's feature set (incl. Pro features) in DockX's black-glass style.
+//! Dynamic Island in DockX's black-glass style.
 //! Platform-independent: the host feeds input, media, battery and system events, and executes `IslandAction`s.
 
 mod pages;
@@ -2346,7 +2346,7 @@ pub(crate) fn headphones_icon(g: &mut Canvas, cx: f32, cy: f32, r: f32, col: Rgb
     g.fill_rrect(rect(cx + r - 3.0 * s, cy + r * 0.1, 4.5 * s, r * 0.9), 2.0 * s, col);
 }
 
-/// Nusa-style mascot: just a pair of eyes (blink, look, sleep, greet).
+/// Mascot: just a pair of eyes (blink, look, sleep, greet).
 pub(crate) fn draw_eyes(g: &mut Canvas, cx: f32, cy: f32, size: f32, mood: Mood, t: f64, look: f32, a: f32) {
     let ew = size * 0.34;
     let eh = size * 0.5;
