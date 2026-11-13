@@ -1,7 +1,10 @@
 //! Dynamic Island in DockX's black-glass style.
 //! Platform-independent: the host feeds input, media, battery and system events, and executes `IslandAction`s.
 
+mod control;
 mod pages;
+
+pub use control::{Controls, Ctl};
 
 use super::anim::*;
 use super::gfx::*;
@@ -224,6 +227,7 @@ pub enum Page {
     Todo,
     Widgets,
     Prayer,
+    Control,
 }
 
 impl Page {
@@ -237,6 +241,7 @@ impl Page {
             Page::Todo => Icon::List,
             Page::Widgets => Icon::Select,
             Page::Prayer => Icon::Lyrics,
+            Page::Control => Icon::Select,
         }
     }
     pub fn title(self) -> &'static str {
@@ -249,6 +254,7 @@ impl Page {
             Page::Todo => "Справи",
             Page::Widgets => "Віджети",
             Page::Prayer => "Молитва",
+            Page::Control => "Керування",
         }
     }
 }
@@ -294,6 +300,8 @@ pub enum Hud {
     Brightness(f32),
     Caps(bool),
     Layout(String),
+    /// colour picker: colour under the cursor, `true` once it was copied
+    Color(u8, u8, u8, bool),
 }
 
 #[derive(Clone, Debug)]
@@ -316,6 +324,7 @@ pub enum IslandAction {
     WantKeyboard(bool),
     Menu { x: f32, y: f32 },
     Sound(NoticeKind),
+    Control(Ctl),
 }
 
 pub struct IslandEnv {
@@ -371,6 +380,10 @@ enum Hot {
     NoticeB,
     Widget(u8),
     WidgetGo(u8),
+    CtlTile(u8),
+    CtlMore(u8),
+    Bright,
+    AudioOut,
     Panel,
 }
 
@@ -413,6 +426,10 @@ impl Hot {
             Hot::NoticeB => "noticeB".into(),
             Hot::Widget(i) => format!("widget{i}"),
             Hot::WidgetGo(i) => format!("widgetgo{i}"),
+            Hot::CtlTile(i) => format!("ctl{i}"),
+            Hot::CtlMore(i) => format!("ctlmore{i}"),
+            Hot::Bright => "brightness".into(),
+            Hot::AudioOut => "audio_out".into(),
             Hot::Panel => "panel".into(),
         }
     }
@@ -537,6 +554,13 @@ pub struct Island {
     hold_until: f64,
     cursor_local: (f32, f32),
     vol_flash: f64,
+
+    pub ctl: Controls,
+    ctl_fill: Vec<Spring>,
+    ctl_press: Vec<Spring>,
+    ctl_pending: [f64; 12],
+    bright_drag: bool,
+    bright_set_at: f64,
 }
 
 impl Island {
@@ -637,6 +661,12 @@ impl Island {
             hold_until: 0.0,
             cursor_local: (-1000.0, -1000.0),
             vol_flash: -10.0,
+            ctl: Controls::default(),
+            ctl_fill: (0..12).map(|_| Spring::new(0.0)).collect(),
+            ctl_press: (0..12).map(|_| Spring::new(0.0)).collect(),
+            ctl_pending: [0.0; 12],
+            bright_drag: false,
+            bright_set_at: -10.0,
         }
     }
 
@@ -645,7 +675,7 @@ impl Island {
     }
 
     pub fn pages(&self) -> Vec<Page> {
-        let mut v = vec![Page::Today, Page::Music, Page::Shelf, Page::Focus, Page::Water, Page::Todo, Page::Widgets];
+        let mut v = vec![Page::Today, Page::Control, Page::Music, Page::Shelf, Page::Focus, Page::Water, Page::Todo, Page::Widgets];
         if self.cfg.prayer_on {
             v.push(Page::Prayer);
         }
@@ -706,6 +736,7 @@ impl Island {
             Hud::Brightness(_) => self.cfg.hud_brightness,
             Hud::Caps(_) => self.cfg.hud_caps,
             Hud::Layout(_) => self.cfg.hud_layout,
+            Hud::Color(..) => true,
         };
         if on {
             self.hud = Some((h, self.now));
@@ -953,7 +984,10 @@ impl Island {
                 let extra = if l > 0.0 || r > 0.0 { (l + r + 28.0 * s) * if self.cfg.floating { 0.9 } else { 0.55 } } else { 0.0 };
                 (bw + extra, bh, small_r)
             }
-            View::Hud => (bw + 120.0 * s, bh, small_r),
+            View::Hud => {
+                let extra = if matches!(self.hud, Some((Hud::Color(..), _))) { 190.0 } else { 120.0 };
+                (bw + extra * s, bh, small_r)
+            }
             View::Notice => {
                 let k = self.notices.first().map(|n| n.kind).unwrap_or(NoticeKind::Water);
                 if k.compact() {
@@ -982,6 +1016,7 @@ impl Island {
                     }
                     Page::Widgets => (600.0, 236.0),
                     Page::Prayer => (600.0, 236.0),
+                    Page::Control => (640.0, 278.0),
                 };
                 (w * s, h * s, 30.0 * s)
             }
@@ -1234,6 +1269,8 @@ impl Island {
             anim = true;
         }
 
+        anim |= self.step_controls(dt);
+
         // lists
         for it in &mut self.shelf {
             anim |= it.appear.step(1.0, 0.09, dt, 0.003);
@@ -1271,7 +1308,7 @@ impl Island {
         {
             ambient = true;
         }
-        if self.scrub.is_some() || self.vol_drag || now - self.vol_flash < 1.2 || self.reorder.is_some() || now < self.greet_until {
+        if self.scrub.is_some() || self.vol_drag || self.bright_drag || now - self.vol_flash < 1.2 || self.reorder.is_some() || now < self.greet_until {
             anim = true;
         }
 
@@ -1548,6 +1585,7 @@ impl Island {
                     Page::Todo => self.draw_todo(g, r, a, live),
                     Page::Widgets => self.draw_widgets(g, r, a, live),
                     Page::Prayer => self.draw_prayer(g, r, a, live),
+                    Page::Control => self.draw_control(g, r, a, live),
                 }
                 let dots_r = if let Some((left, _)) = self.split_rects { rect(left.x + self.ear.v, left.y, left.w - 2.0 * self.ear.v, left.h) } else { r };
                 self.draw_dots(g, dots_r, a, live);
@@ -1757,6 +1795,17 @@ impl Island {
                 g.text_in(&self.fonts.bold, &short.to_uppercase(), 10.0 * s, chip, Align::Center, TEXT.alpha(a));
                 g.text_in(&self.fonts.semibold, &name, 13.0 * s, rect(r.x + pad + 32.0 * s, r.y, r.w, r.h), Align::Left, TEXT.alpha(a));
             }
+            Hud::Color(cr, cg, cb, picked) => {
+                let sw = rect(ic.0 - 10.0 * s, cy - 10.0 * s, 20.0 * s, 20.0 * s);
+                g.fill_rrect(sw, 6.0 * s, rgba(cr, cg, cb, 255).alpha(a));
+                g.stroke_rrect(sw, 6.0 * s, rgba(255, 255, 255, 90).alpha(a), s.max(1.0));
+                let hex = format!("#{:02X}{:02X}{:02X}", cr, cg, cb);
+                let x = r.x + pad + 28.0 * s;
+                let tw = self.fonts.semibold.measure(&hex, 13.0 * s);
+                g.text_in(&self.fonts.semibold, &hex, 13.0 * s, rect(x, r.y, r.w, r.h), Align::Left, TEXT.alpha(a));
+                let hint = if picked { "скопійовано" } else { "клік — копіювати" };
+                g.text_in(&self.fonts.regular, hint, 11.5 * s, rect(x + tw + 8.0 * s, r.y, r.w, r.h), Align::Left, if picked { rgba(110, 214, 150, 255) } else { TEXT3 }.alpha(a));
+            }
         }
     }
 
@@ -1915,6 +1964,11 @@ impl Island {
                 let v = self.frac_in(l.0, Hot::Volume);
                 self.change_volume(v);
             }
+            Some(Hot::Bright) => {
+                self.bright_drag = true;
+                let v = self.frac_in(l.0, Hot::Bright);
+                self.change_brightness(v);
+            }
             Some(Hot::Tile(i)) => {
                 if double {
                     if let Some(it) = self.shelf.get(i) {
@@ -1978,6 +2032,10 @@ impl Island {
             let v = self.frac_in(l.0, Hot::Volume);
             self.change_volume(v);
             self.kick();
+        }
+        if self.bright_drag {
+            let v = self.frac_in(l.0, Hot::Bright);
+            self.change_brightness(v);
         }
         if let Some((i, start_y)) = self.reorder {
             self.reorder_move(i, start_y, y);
@@ -2082,6 +2140,11 @@ impl Island {
             self.kick();
             return;
         }
+        if self.bright_drag {
+            self.bright_drag = false;
+            self.kick();
+            return;
+        }
         if hit.is_none() || hit != pressed {
             self.kick();
             return;
@@ -2162,6 +2225,7 @@ impl Island {
         self.pressed = None;
         self.scrub = None;
         self.vol_drag = false;
+        self.bright_drag = false;
         self.drag_src = None;
         self.reorder = None;
         self.kick();

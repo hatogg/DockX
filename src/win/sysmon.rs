@@ -191,7 +191,7 @@ unsafe fn wmi_connect() -> Option<IWbemServices> {
     Some(svc)
 }
 
-unsafe fn brightness(svc: &IWbemServices) -> Option<u32> {
+pub(super) unsafe fn brightness(svc: &IWbemServices) -> Option<u32> {
     let en = svc
         .ExecQuery(&BSTR::from("WQL"), &BSTR::from("SELECT CurrentBrightness FROM WmiMonitorBrightness"), WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY, None)
         .ok()?;
@@ -207,7 +207,7 @@ unsafe fn brightness(svc: &IWbemServices) -> Option<u32> {
     u32::try_from(&v).ok()
 }
 
-unsafe fn wifi_ssid(hc: HANDLE) -> Option<String> {
+pub(super) unsafe fn wifi_ssid(hc: HANDLE) -> Option<String> {
     let mut list: *mut WLAN_INTERFACE_INFO_LIST = std::ptr::null_mut();
     if WlanEnumInterfaces(hc, None, &mut list) != 0 || list.is_null() {
         return None;

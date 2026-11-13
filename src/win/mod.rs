@@ -1,6 +1,7 @@
 //! Windows host: layered windows for the dock, the island and the settings, a vsync-paced frame
 //! clock, input, OLE drag & drop, menus, and the workers (media, lyrics, system monitor, process scan).
 
+mod controls;
 mod dnd;
 mod media;
 mod menu;
@@ -175,6 +176,7 @@ impl Surface {
 enum Modal {
     DockMenu(Option<usize>, i32, i32),
     IslandMenu(i32, i32),
+    AudioMenu(i32, i32),
     Pick(bool),
     DragFiles(Vec<String>),
     DragText(String),
@@ -234,6 +236,15 @@ struct App {
     modal: Vec<Modal>,
     capture: bool,
     surrogate: u16,
+
+    ctl_tx: Sender<controls::Cmd>,
+    ctl_rx: Receiver<controls::Snapshot>,
+    ctl_snap: controls::Snapshot,
+    ctl_awake: bool,
+    gamma: controls::Gamma,
+    ctl_was_open: bool,
+    ctl_local_at: f64,
+    pick_until: f64,
 }
 
 thread_local! {
@@ -360,6 +371,7 @@ impl App {
         let cursor = self.cursor();
         self.poll_workers(now);
         self.poll_system(now);
+        self.poll_controls(now);
 
         let mut anim = false;
         if self.cfg.show_dock {
@@ -504,6 +516,10 @@ impl App {
                     self.island.audio_device(&n);
                 }
             }
+        }
+        while let Ok(snap) = self.ctl_rx.try_recv() {
+            self.ctl_snap = snap;
+            self.push_controls(now);
         }
         while let Ok(map) = self.scan_rx.try_recv() {
             self.running = map;
@@ -724,7 +740,106 @@ impl App {
                 IslandAction::Sound(_) => unsafe {
                     let _ = PlaySoundW(&h("SystemNotification"), None, SND_ALIAS | SND_ASYNC | SND_NODEFAULT);
                 },
+                IslandAction::Control(c) => self.control(c, now),
             }
+        }
+    }
+
+    // ───────── «Керування» ─────────
+
+    /// Page open → the worker polls radios; local switches (theme, mic) are re-read every second.
+    fn poll_controls(&mut self, now: f64) {
+        let open = self.island.control_open();
+        controls::ACTIVE.store(open, Ordering::Relaxed);
+        if open && !self.ctl_was_open {
+            let _ = self.ctl_tx.send(controls::Cmd::Refresh);
+            self.push_controls(now);
+        } else if open && now - self.ctl_local_at > 1.0 {
+            self.push_controls(now);
+        }
+        self.ctl_was_open = open;
+        if controls::picking() {
+            if now > self.pick_until {
+                controls::picker_stop();
+            } else {
+                let (r, g, b) = controls::pixel_at_cursor();
+                self.island.show_hud(Hud::Color(r, g, b, false));
+            }
+        }
+    }
+
+    fn push_controls(&mut self, now: f64) {
+        self.ctl_local_at = now;
+        let out = controls::audio_outputs().into_iter().find(|o| o.2).map(|o| o.1).unwrap_or_default();
+        let c = controls::merge(&self.ctl_snap, self.ctl_awake, self.gamma.on(), &out);
+        self.island.set_controls(c);
+    }
+
+    fn control(&mut self, c: Ctl, now: f64) {
+        match c {
+            Ctl::Wifi(v) => {
+                let _ = self.ctl_tx.send(controls::Cmd::Wifi(v));
+            }
+            Ctl::Bluetooth(v) => {
+                let _ = self.ctl_tx.send(controls::Cmd::Bluetooth(v));
+            }
+            Ctl::Airplane(v) => {
+                let _ = self.ctl_tx.send(controls::Cmd::Airplane(v));
+            }
+            Ctl::Hotspot(v) => {
+                let _ = self.ctl_tx.send(controls::Cmd::Hotspot(v));
+            }
+            Ctl::Brightness(v) => {
+                let _ = self.ctl_tx.send(controls::Cmd::Brightness(v));
+            }
+            Ctl::WifiMore => controls::open_uri("ms-availablenetworks:"),
+            Ctl::BluetoothMore => controls::open_uri("ms-settings:bluetooth"),
+            Ctl::HotspotMore => controls::open_uri("ms-settings:network-mobilehotspot"),
+            Ctl::Settings => controls::open_uri("ms-settings:"),
+            Ctl::Awake(v) => {
+                controls::keep_awake(v);
+                self.ctl_awake = v;
+            }
+            Ctl::Dark(v) => controls::set_dark_mode(v),
+            Ctl::MicMute(m) => controls::set_mic_muted(m),
+            Ctl::Night(v) => {
+                if v {
+                    if !self.gamma.enable() {
+                        // the driver refuses gamma ramps: Windows' own night light instead
+                        controls::open_uri("ms-settings:nightlight");
+                    }
+                } else {
+                    self.gamma.disable();
+                }
+            }
+            Ctl::Snip => {
+                // let the island fold away first so it isn't in the screenshot
+                std::thread::spawn(|| unsafe {
+                    let _ = windows::Win32::System::Com::CoInitializeEx(None, windows::Win32::System::Com::COINIT_APARTMENTTHREADED);
+                    std::thread::sleep(Duration::from_millis(380));
+                    controls::open_uri("ms-screenclip:");
+                });
+            }
+            Ctl::Picker => {
+                if controls::picker_start(self.hwnd_island) {
+                    self.pick_until = now + 20.0;
+                }
+            }
+            Ctl::Lock => controls::lock(),
+            Ctl::AudioOut { x, y } => self.modal.push(Modal::AudioMenu(x as i32, y as i32)),
+        }
+        self.push_controls(now);
+    }
+
+    /// Click (copy) or Esc/right click (cancel) while picking a colour.
+    fn pick_done(&mut self, picked: bool) {
+        let (r, g, b) = controls::pixel_at_cursor();
+        controls::picker_stop();
+        if picked {
+            let hex = format!("#{:02X}{:02X}{:02X}", r, g, b);
+            self.ignore_clip_until = self.now() + 0.6;
+            set_clipboard_text(self.hwnd_island, &hex);
+            self.island.show_hud(Hud::Color(r, g, b, true));
         }
     }
 
@@ -1005,6 +1120,30 @@ fn run_modals(hinst: HINSTANCE) {
                     return;
                 }
             }
+            Modal::AudioMenu(x, y) => {
+                let outs = controls::audio_outputs();
+                let mut items: Vec<menu::M> = outs.iter().enumerate().map(|(i, o)| menu::check(200 + i as u32, &o.1, o.2)).collect();
+                if !items.is_empty() {
+                    items.push(menu::M::Sep);
+                }
+                items.push(menu::item(299, "Параметри звуку…"));
+                with(|a| a.menu_open = true);
+                let id = menu::show(hwnd_island, x, y, &items, s);
+                with(|a| {
+                    a.menu_open = false;
+                    if id == 299 {
+                        controls::open_uri("ms-settings:sound");
+                    } else if id >= 200 {
+                        if let Some(o) = outs.get((id - 200) as usize) {
+                            controls::set_default_output(&o.0);
+                            a.volume.refresh();
+                            a.last_vol = a.volume.get();
+                        }
+                    }
+                    let now = a.now();
+                    a.push_controls(now);
+                });
+            }
             Modal::Pick(folder) => {
                 let paths = shell::pick(hwnd_dock, folder);
                 with(|a| {
@@ -1043,7 +1182,12 @@ fn run_modals(hinst: HINSTANCE) {
 }
 
 fn quit_app() {
+    controls::picker_stop();
     with(|a| {
+        a.gamma.disable();
+        if a.ctl_awake {
+            controls::keep_awake(false);
+        }
         a.save_cfg_at = a.save_cfg_at.max(0.001);
         a.save_data_at = a.save_data_at.max(0.001);
         a.save_now();
@@ -1139,6 +1283,11 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
     let kind = GetWindowLongPtrW(hwnd, GWLP_USERDATA);
     let hinst: HINSTANCE = GetModuleHandleW(None).unwrap_or_default().into();
     match msg {
+        controls::WM_APP_PICK => {
+            with(|a| a.pick_done(wp.0 != 0));
+            pump(hinst);
+            return LRESULT(0);
+        }
         WM_TIMER | WM_APP_FRAME | WM_APP_WAKE => {
             if msg == WM_APP_FRAME {
                 FRAME_PENDING.store(false, Ordering::SeqCst);
@@ -1600,6 +1749,9 @@ pub fn run() {
         sysmon::spawn_monitor(sys_tx, post_wake);
         let (scan_tx, scan_rx) = channel();
         scan_thread(scan_tx);
+        let (ctl_tx, ctl_cmd_rx) = channel();
+        let (ctl_snap_tx, ctl_rx) = channel();
+        controls::spawn(ctl_cmd_rx, ctl_snap_tx, post_wake);
 
         let app = App {
             s,
@@ -1644,6 +1796,14 @@ pub fn run() {
             modal: Vec::new(),
             capture: false,
             surrogate: 0,
+            ctl_tx,
+            ctl_rx,
+            ctl_snap: controls::Snapshot::default(),
+            ctl_awake: false,
+            gamma: controls::Gamma::new(),
+            ctl_was_open: false,
+            ctl_local_at: -10.0,
+            pick_until: 0.0,
         };
         APP.with(|a| *a.borrow_mut() = Some(app));
 

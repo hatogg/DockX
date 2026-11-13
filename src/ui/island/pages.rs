@@ -1112,6 +1112,8 @@ impl Island {
                     if let Some(path) = moon_lit(cx, cy, 6.5 * s, 0.85) {
                         g.fill_path(&path, if active || hot { TEXT } else { TEXT2 }.alpha(ia));
                     }
+                } else if *p == Page::Control {
+                    control::sliders_icon(g, cx, cy, 14.0 * s, if active || hot { TEXT } else { TEXT2 }.alpha(ia), s);
                 } else if *p == Page::Widgets {
                     for (dx, dy) in [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
                         g.fill_rrect(rect(cx + dx * 4.0 * s - 3.0 * s, cy + dy * 4.0 * s - 3.0 * s, 6.0 * s, 6.0 * s), 1.5 * s, if active || hot { TEXT } else { TEXT2 }.alpha(ia));
@@ -1314,7 +1316,8 @@ impl Island {
                     self.notices.remove(0);
                 }
             }
-            Hot::Seek | Hot::Volume | Hot::Dots | Hot::Tile(_) | Hot::Panel => {}
+            Hot::CtlTile(_) | Hot::CtlMore(_) | Hot::AudioOut => self.control_click(h),
+            Hot::Seek | Hot::Volume | Hot::Bright | Hot::Dots | Hot::Tile(_) | Hot::Panel => {}
         }
     }
 

@@ -6,7 +6,7 @@ SetCompressor /SOLID lzma
 
 !define APP "DockX"
 !ifndef VERSION
-  !define VERSION "2.0.1"
+  !define VERSION "2.1.0"
 !endif
 !define PUBLISHER "X44TO"
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\DockX"

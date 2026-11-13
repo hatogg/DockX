@@ -1,6 +1,6 @@
 [package]
 name = "dockx"
-version = "2.0.1"
+version = "2.1.0"
 edition = "2021"
 authors = ["X44TO"]
 description = "DockX — macOS-style dock + Dynamic Island for Windows by X44TO"
@@ -41,6 +41,8 @@ features = [
   "Win32_Networking_WinHttp", "Win32_Security",
   "Win32_System_Wmi", "Win32_NetworkManagement_WiFi", "Win32_Devices_FunctionDiscovery", "Win32_UI_Shell_PropertiesSystem",
   "Win32_Globalization", "Win32_System_Power", "Win32_System_Time", "Win32_System_ProcessStatus",
+  "Devices_Radios", "Devices_Bluetooth", "Devices_Enumeration", "Networking_Connectivity", "Networking_NetworkOperators",
+  "Win32_Devices_Display", "Win32_UI_ColorSystem", "Win32_System_Shutdown",
 ]
 
 [profile.release]
