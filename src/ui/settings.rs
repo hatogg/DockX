@@ -42,7 +42,7 @@ pub fn to_ini(a: &AppSettings, items: &[DockItem]) -> String {
     let i = &a.island;
     let mut s = String::from("# DockX 2.0\n");
     s += &format!("IconSize={}\nMagnification={:.2}\nAutoHide={}\nHideInFullscreen={}\nShowDock={}\n", d.icon_size, d.magnification, b(d.auto_hide), b(d.hide_in_fullscreen), b(a.show_dock));
-    s += &format!("HideTaskbar={}\nTaskbarPrevAutoHide={}\n", b(a.hide_taskbar), b(a.taskbar_prev_autohide));
+    s += &format!("HideTaskbar={}\nTaskbarPrevAutoHide={}\nSmartHide={}\n", b(a.hide_taskbar), b(a.taskbar_prev_autohide), b(d.smart_hide));
     let kv: Vec<(&str, String)> = vec![
         ("Island", b(i.enabled).into()),
         ("IslandSize", i.size.to_string()),
@@ -108,6 +108,7 @@ pub fn from_ini(text: &str) -> (AppSettings, Vec<(String, String)>) {
             "IconSize" => a.dock.icon_size = v.parse::<i32>().unwrap_or(52).clamp(32, 96),
             "Magnification" => a.dock.magnification = v.parse::<f32>().unwrap_or(1.7).clamp(1.0, 2.2),
             "AutoHide" => a.dock.auto_hide = on,
+            "SmartHide" => a.dock.smart_hide = on,
             "HideInFullscreen" => a.dock.hide_in_fullscreen = on,
             "ShowDock" => a.show_dock = on,
             "HideTaskbar" => a.hide_taskbar = on,
@@ -279,6 +280,7 @@ impl SettingsPanel {
                     r("icon_size", "Розмір іконок", "", ch(&["40", "48", "56", "64", "72", "84"], si)),
                     r("magnify", "Збільшення при наведенні", "", ch(&["Вимк", "Слабке", "Середнє", "Сильне"], mi)),
                     r("autohide", "Автоприховування", "Док виїжджає, коли курсор торкається нижнього краю", Ctl::Toggle(a.dock.auto_hide)),
+                    r("smarthide", "Ховатися під вікнами", "Коли вікно заходить на док, він ховається; підведи мишу до низу — виїде", Ctl::Toggle(a.dock.smart_hide)),
                     r("taskbar", "Сховати панель задач Windows", "Лишається тільки док. Панель повернеться, коли вимкнеш це або закриєш DockX", Ctl::Toggle(a.hide_taskbar)),
                 ]
             }
@@ -383,6 +385,7 @@ impl SettingsPanel {
             "icon_size" => a.dock.icon_size = pick(&[40, 48, 56, 64, 72, 84], v) as i32,
             "magnify" => a.dock.magnification = [1.0, 1.35, 1.7, 2.05][v.clamp(0, 3) as usize],
             "autohide" => a.dock.auto_hide = !a.dock.auto_hide,
+            "smarthide" => a.dock.smart_hide = !a.dock.smart_hide,
             "isl_size" => i.size = v.clamp(0, 2) as u8,
             "isl_style" => i.floating = v == 1,
             "minimal" => i.minimal = !i.minimal,

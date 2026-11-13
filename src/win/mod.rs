@@ -26,7 +26,7 @@ use std::time::{Duration, Instant};
 use util::*;
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::*;
-use windows::Win32::Graphics::Dwm::{DwmFlush, DwmGetWindowAttribute, DWMWA_CLOAKED};
+use windows::Win32::Graphics::Dwm::{DwmFlush, DwmGetWindowAttribute, DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS};
 use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::Media::Audio::{PlaySoundW, SND_ALIAS, SND_ASYNC, SND_NODEFAULT};
 use windows::Win32::Media::{timeBeginPeriod, timeEndPeriod};
@@ -247,6 +247,8 @@ struct App {
     fs_since: f64,
     taskbar_hidden: bool,
     last_taskbar: f64,
+    dock_covered: bool,
+    last_cover: f64,
 }
 
 thread_local! {
@@ -420,7 +422,11 @@ impl App {
 
         let mut anim = false;
         if self.cfg.show_dock {
-            let env = DockEnv { now, cursor, work: self.work, screen: self.screen, s: self.s, fullscreen: self.fullscreen, menu_open: self.menu_open };
+            if now - self.last_cover > 0.25 {
+                self.last_cover = now;
+                self.dock_covered = self.cfg.dock.smart_hide && self.window_over_dock();
+            }
+            let env = DockEnv { now, cursor, work: self.work, screen: self.screen, s: self.s, fullscreen: self.fullscreen, menu_open: self.menu_open, covered: self.dock_covered };
             anim |= self.dock.step(&env);
         } else {
             self.dock.win_visible = false;
@@ -626,6 +632,44 @@ impl App {
                 self.fs_since = -1.0;
                 self.fullscreen = false;
             }
+        }
+    }
+
+    /// The active window reaches into the dock's place (smart hide).
+    fn window_over_dock(&self) -> bool {
+        unsafe {
+            let h = GetForegroundWindow();
+            if h.is_invalid() || h == GetShellWindow() || h == GetDesktopWindow() || IsIconic(h).as_bool() || !IsWindowVisible(h).as_bool() {
+                return false;
+            }
+            let mut pid = 0u32;
+            GetWindowThreadProcessId(h, Some(&mut pid));
+            if pid == std::process::id() {
+                return false;
+            }
+            let mut cls = [0u16; 64];
+            let n = GetClassNameW(h, &mut cls);
+            let cls = String::from_utf16_lossy(&cls[..n as usize]);
+            if matches!(cls.as_str(), "Progman" | "WorkerW" | "Shell_TrayWnd" | "Shell_SecondaryTrayWnd" | "Windows.UI.Core.CoreWindow" | "MultitaskingViewFrame" | "#32768") {
+                return false;
+            }
+            let ex = GetWindowLongW(h, GWL_EXSTYLE) as u32;
+            if ex & (WS_EX_TOOLWINDOW.0 | WS_EX_TRANSPARENT.0 | WS_EX_NOACTIVATE.0) != 0 {
+                return false;
+            }
+            let mut cloaked = 0u32;
+            if DwmGetWindowAttribute(h, DWMWA_CLOAKED, &mut cloaked as *mut u32 as *mut _, 4).is_ok() && cloaked != 0 {
+                return false;
+            }
+            // the visible frame, without the invisible resize borders
+            let mut r = RECT::default();
+            if DwmGetWindowAttribute(h, DWMWA_EXTENDED_FRAME_BOUNDS, &mut r as *mut RECT as *mut _, std::mem::size_of::<RECT>() as u32).is_err()
+                && GetWindowRect(h, &mut r).is_err()
+            {
+                return false;
+            }
+            let d = self.dock.rest_rect();
+            (r.left as f32) < d.r() && (r.right as f32) > d.x && (r.top as f32) < d.b() && (r.bottom as f32) > d.y
         }
     }
 
@@ -1869,6 +1913,8 @@ pub fn run() {
             fs_since: -1.0,
             taskbar_hidden: false,
             last_taskbar: 0.0,
+            dock_covered: false,
+            last_cover: 0.0,
         };
         APP.with(|a| *a.borrow_mut() = Some(app));
         with(|a| a.apply_taskbar());

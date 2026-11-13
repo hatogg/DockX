@@ -85,12 +85,14 @@ pub struct DockSettings {
     pub icon_size: i32,
     pub magnification: f32,
     pub auto_hide: bool,
+    /// hide while a window covers the dock (the cursor at the bottom edge brings it back)
+    pub smart_hide: bool,
     pub hide_in_fullscreen: bool,
 }
 
 impl Default for DockSettings {
     fn default() -> Self {
-        DockSettings { icon_size: 52, magnification: 1.7, auto_hide: false, hide_in_fullscreen: true }
+        DockSettings { icon_size: 52, magnification: 1.7, auto_hide: false, smart_hide: true, hide_in_fullscreen: true }
     }
 }
 
@@ -127,6 +129,8 @@ pub struct DockEnv {
     /// a full-screen game/video is in front (host checks it twice a second)
     pub fullscreen: bool,
     pub menu_open: bool,
+    /// the active window overlaps `rest_rect()` (host checks it a few times a second)
+    pub covered: bool,
 }
 
 pub struct Dock {
@@ -289,6 +293,13 @@ impl Dock {
         }
         n * self.b() + (n - 1.0) * self.gap() + 18.0 * self.s
     }
+    /// Where the shown dock sits at rest (unmagnified), in screen coordinates.
+    pub fn rest_rect(&self) -> RectF {
+        let w = self.base_shelf_width();
+        let h = self.shelf_height();
+        rect(self.center_x() - w / 2.0, self.work.b() - self.bottom_gap() - h, w, h)
+    }
+
     /// Top edge of the visible dock (for the island to avoid it, unused) and the reserved height.
     pub fn is_shown(&self) -> bool {
         self.hide_t < 1.0
@@ -395,7 +406,8 @@ impl Dock {
             self.last_hover = now;
         }
 
-        if !self.cfg.auto_hide {
+        let want_hidden = self.cfg.auto_hide || (self.cfg.smart_hide && env.covered);
+        if !want_hidden {
             self.shown = true;
         } else if !self.shown && self.at_reveal_edge(p) {
             self.shown = true;

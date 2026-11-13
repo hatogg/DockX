@@ -920,7 +920,7 @@ fn main() {
             settings = None;
         }
 
-        let denv = DockEnv { now, cursor: (cx, cy), work: screen, screen, s: S, fullscreen: fs, menu_open: menu.is_some() };
+        let denv = DockEnv { now, cursor: (cx, cy), work: screen, screen, s: S, fullscreen: fs, menu_open: menu.is_some(), covered: false };
         dock.step(&denv);
         let ienv = IslandEnv { now, cursor: (cx, cy), screen, s: S, fullscreen: fs, menu_open: menu.is_some(), unix: unix_at(now), tz_min: tz, idle_secs: now - idle_start };
         isl.step(&ienv);
