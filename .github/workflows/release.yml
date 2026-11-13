@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Інструменти
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mingw-w64 nsis zip
+          rustup target add x86_64-pc-windows-gnu
+
+      - name: Збірка DockX.exe
+        run: |
+          cargo build --release --bin DockX --target x86_64-pc-windows-gnu
+          mkdir -p dist
+          cp target/x86_64-pc-windows-gnu/release/DockX.exe dist/
+
+      - name: Інсталятор і портативна версія
+        run: |
+          VERSION=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          makensis -DVERSION=$VERSION installer/dockx.nsi
+          mkdir -p portable/DockX
+          cp dist/DockX.exe LICENSE portable/DockX/
+          cp docs/README-app.md portable/DockX/README.md
+          (cd portable && zip -9 -r ../dist/DockX-portable.zip DockX)
+          cp docs/DockX-demo.mp4 dist/
+          ls -la dist
+
+      - name: Реліз
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v2.0.1' }}
+          name: DockX ${{ github.ref_type == 'tag' && github.ref_name || 'v2.0.1' }}
+          body_path: docs/RELEASE.md
+          make_latest: true
+          files: |
+            dist/DockX-Setup.exe
+            dist/DockX-portable.zip
+            dist/DockX-demo.mp4

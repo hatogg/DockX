@@ -20,7 +20,7 @@
 <sub>🇬🇧 DockX is a macOS-style dock plus a Nusa-style Dynamic Island for Windows 10/11 in one 1.5 MB Rust app: music with synced lyrics, file shelf, clipboard history, focus timer, water tracker, to-dos with reminders, widgets, prayer times and system indicators.</sub>
 
 <p align="center">
-  <a href="https://github.com/hatogg/DockX/releases/latest/download/DockX-demo.mp4"><b>▶ Відео з усіма функціями (3,5 хв)</b></a>
+  <a href="docs/DockX-demo.mp4"><b>▶ Відео з усіма функціями (3,5 хв)</b></a>
 </p>
 
 ## Dynamic Island
